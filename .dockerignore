@@ -1,0 +1,14 @@
+.git
+.idea
+.env
+.env.*
+!.env.example
+bin
+*.out
+
+# Local database backups
+*.sql.gz
+*.dump
+*.backup
+/backups/
+.DS_Store
