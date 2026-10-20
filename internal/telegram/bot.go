@@ -103,9 +103,9 @@ func (b *Bot) call(ctx context.Context, method string, payload any, result any) 
 	return nil
 }
 
-// A single polling worker serializes messages, including all messages from one user.
-// Replies are durable before the polling offset advances. Delivery retries run
-// separately, so an unreachable chat does not block other users.
+// One poller owns the offset and delivery retries. Each fetched batch processes
+// users concurrently while preserving message order within each user. The offset
+// advances only past a contiguous prefix of durably completed updates.
 func (b *Bot) Run(ctx context.Context) error {
 	var offset int64
 	for ctx.Err() == nil {
@@ -134,16 +134,16 @@ func (b *Bot) Run(ctx context.Context) error {
 			}
 			continue
 		}
-		for _, u := range updates {
-			if err = b.Handle(ctx, u); err != nil {
-				if fatal(err) {
-					return err
-				}
-				slog.Warn("Telegram update deferred", "update_id", u.ID, "error", err)
-				pause(ctx, 3*time.Second)
-				break
+		completed, err := b.handleBatch(ctx, updates)
+		if completed > 0 {
+			offset = updates[completed-1].ID + 1
+		}
+		if err != nil {
+			if fatal(err) {
+				return err
 			}
-			offset = u.ID + 1
+			slog.Warn("Telegram update deferred", "update_id", updates[completed].ID, "error", err)
+			pause(ctx, 3*time.Second)
 		}
 	}
 	return ctx.Err()

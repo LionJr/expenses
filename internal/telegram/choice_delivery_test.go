@@ -26,7 +26,8 @@ func (*choiceRepo) OperationResult(context.Context, string, int64) (json.RawMess
 func (*choiceRepo) List(context.Context, expense.Filter) (expense.Page, error) {
 	return expense.Page{Items: []expense.Expense{{ID: 33, UserID: 42, Amount: 300}, {ID: 11, UserID: 42, Amount: 100}, {ID: 22, UserID: 42, Amount: 200}}, Total: 3}, nil
 }
-func (r *choiceRepo) Mutate(_ context.Context, _ string, _ int64, kind string, id int64, _ expense.Input, _ expense.Patch) (json.RawMessage, error) {
+func (r *choiceRepo) Execute(_ context.Context, _ string, _ int64, command expense.Command) (json.RawMessage, error) {
+	kind, id := string(command.Operation), command.ID
 	r.mutations++
 	r.deleted = id
 	return json.Marshal(map[string]string{"operation": kind, "deleted_id": fmt.Sprint(id)})

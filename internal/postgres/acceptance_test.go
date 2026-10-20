@@ -14,6 +14,8 @@ import (
 
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
+	"github.com/LionJr/expenses/internal/expensewire"
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 	"github.com/LionJr/expenses/internal/telegram"
@@ -22,7 +24,7 @@ import (
 // Runs under TestPostgresIntegration's dedicated-database guard; never against
 // the application database. Each helper uses its own comments/dates or IDs.
 func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
-	server := httptest.NewServer((&httpapi.API{Store: s, Timezone: "Asia/Ashgabat"}).Handler())
+	server := httptest.NewServer((&httpapi.API{Store: expensesvc.New(s), Timezone: "Asia/Ashgabat"}).Handler())
 	defer server.Close()
 	request := func(method, path, body, origin string, want int) []byte {
 		t.Helper()
@@ -76,11 +78,11 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 				t.Fatalf("%s must be a string: %s", key, data)
 			}
 		}
-		var e expense.Expense
+		var e expensewire.Expense
 		if err := json.Unmarshal(data, &e); err != nil {
 			t.Fatal(err)
 		}
-		created = append(created, e)
+		created = append(created, e.Domain())
 	}
 	defer func() {
 		for _, e := range created {
@@ -91,7 +93,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 	}()
 	filter := "/api/expenses?user_id=101&category=еда&date_from=2040-02-28&date_to=2040-02-29&limit=1"
 	for offset, wantID := range []int64{created[1].ID, created[0].ID} {
-		var page expense.Page
+		var page expensewire.Page
 		data := request("GET", fmt.Sprintf("%s&offset=%d", filter, offset), "", "", 200)
 		if err := json.Unmarshal(data, &page); err != nil {
 			t.Fatal(err)
@@ -100,7 +102,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 			t.Fatalf("filter/page/aggregate mismatch: %s", data)
 		}
 	}
-	var empty expense.Page
+	var empty expensewire.Page
 	if err := json.Unmarshal(request("GET", filter+"&offset=99", "", "", 200), &empty); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 	if err != nil || len(page.Items) != 1 || page.Items[0].Amount != 12345 || page.Items[0].Comment != "http-acceptance" {
 		t.Fatalf("invalid request changed row: %+v %v", page, err)
 	}
-	var updated expense.Expense
+	var updated expensewire.Expense
 	data := request("PATCH", path, `{"comment":"","amount":"9007199254740993"}`, "", 200)
 	if err := json.Unmarshal(data, &updated); err != nil {
 		t.Fatal(err)
@@ -176,7 +178,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	}))
 	defer server.Close()
 	newBot := func(store *postgres.Store) *telegram.Bot {
-		return &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: store.Allowed, Store: store, Agent: &agent.Agent{Store: store, LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		return &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: store.Allowed, Store: store, Agent: &agent.Agent{Store: expensesvc.New(store), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 	}
 	bot := newBot(s)
 	seq := int64(15000)
@@ -303,7 +305,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	}))
 	defer server.Close()
 	bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s,
-		Agent: &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second,
+		Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second,
 			Now: func() time.Time { return time.Date(2043, 10, 19, 10, 0, 0, 0, time.UTC) }}}
 	seq := int64(16000)
 	send := func(text string) string {

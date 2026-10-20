@@ -14,6 +14,8 @@ import (
 
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
+	"github.com/LionJr/expenses/internal/expensewire"
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 	"github.com/LionJr/expenses/internal/telegram"
@@ -34,7 +36,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		})
 		return e
 	}
-	handler := (&httpapi.API{Store: s, Timezone: "Asia/Ashgabat"}).Handler()
+	handler := (&httpapi.API{Store: expensesvc.New(s), Timezone: "Asia/Ashgabat"}).Handler()
 	request := func(method, path, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
@@ -52,7 +54,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if first.Code != 200 {
 			t.Fatal(first.Code, first.Body)
 		}
-		var changed expense.Expense
+		var changed expensewire.Expense
 		if err := json.Unmarshal(first.Body.Bytes(), &changed); err != nil {
 			t.Fatal(err)
 		}
@@ -132,7 +134,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 	t.Run("Russian aliases update and delete existing expense", func(t *testing.T) {
 		e := create(t, "аренда квартиры morphology-fixed")
 		provider := &offlineProvider{}
-		a := &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}
+		a := &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}
 		reply, _, err := a.Reply(ctx, 101, 19001, "измени аренду на 12000", agent.Session{})
 		if err != nil || !strings.Contains(reply, "Выполнено") {
 			t.Fatal(reply, err)
@@ -168,7 +170,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			fmt.Fprint(w, `{"ok":true,"result":{"message_id":20000}}`)
 		}))
 		defer server.Close()
-		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 		runCtx, stop := context.WithTimeout(ctx, 3*time.Second)
 		cancel = stop
 		defer stop()
@@ -202,7 +204,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			fmt.Fprint(w, `{"ok":true,"result":{"message_id":22000}}`)
 		}))
 		defer server.Close()
-		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 		if err := bot.Handle(ctx, privateUpdate(t, 19201, 19201, "кофе")); err != nil {
 			t.Fatal(err)
 		}
@@ -210,7 +212,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			t.Fatal("draft missing from PostgreSQL")
 		}
 		// Replace all process-local bot/agent state; only PostgreSQL carries the draft.
-		bot.Agent = &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}
+		bot.Agent = &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}
 		if err := bot.Handle(ctx, privateUpdate(t, 19202, 19202, "350,50")); err != nil {
 			t.Fatal(err)
 		}

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/LionJr/expenses/migrations"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,8 +14,10 @@ import (
 
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
 	"github.com/LionJr/expenses/internal/postgres"
 	"github.com/LionJr/expenses/internal/telegram"
+	"github.com/LionJr/expenses/migrations"
 )
 
 type failFinishOnce struct {
@@ -66,7 +67,7 @@ func checkBotRecovery(t *testing.T, s *postgres.Store) {
 				text = "последнее было не 350, а 450"
 			}
 			provider := &scriptedProvider{responses: []agent.Message{toolMessage("list_expenses", `{"selection":"latest_created","limit":1}`), toolMessage(kind, args), {Role: "assistant", Content: "Готово"}}}
-			responder := &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}
+			responder := &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}
 			store := &failFinishOnce{Store: s, fail: true}
 			sends := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { sends++; fmt.Fprint(w, `{"ok":true,"result":{}}`) }))

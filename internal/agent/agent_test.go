@@ -13,6 +13,7 @@ import (
 
 	"github.com/LionJr/expenses/internal/botstate"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensewire"
 )
 
 // fakeRepo records the agent/storage boundary and returns supplied search results.
@@ -46,7 +47,8 @@ func (f *fakeRepo) List(_ context.Context, filter expense.Filter) (expense.Page,
 	f.owner = filter.UserID
 	return f.page, f.listError
 }
-func (f *fakeRepo) Mutate(_ context.Context, key string, owner int64, name string, id int64, i expense.Input, p expense.Patch) (json.RawMessage, error) {
+func (f *fakeRepo) Execute(_ context.Context, key string, owner int64, command expense.Command) (json.RawMessage, error) {
+	name, id, i, p := string(command.Operation), command.ID, command.Input, command.Patch
 	f.mutationAttempts++
 	if f.mutationError != nil {
 		return nil, f.mutationError
@@ -84,7 +86,7 @@ func (f *fakeRepo) Mutate(_ context.Context, key string, owner int64, name strin
 			result.Comment = *p.Comment
 		}
 	}
-	data, err := json.Marshal(result)
+	data, err := json.Marshal(expensewire.FromExpense(result))
 	if err != nil {
 		return nil, err
 	}

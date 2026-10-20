@@ -13,6 +13,7 @@ import (
 
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/config"
+	"github.com/LionJr/expenses/internal/expensesvc"
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 	"github.com/LionJr/expenses/internal/telegram"
@@ -42,7 +43,8 @@ func run() error {
 	}
 	defer store.DB.Close()
 
-	api := &httpapi.API{Store: store, Timezone: cfg.Location.String()}
+	expenses := expensesvc.New(store)
+	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String()}
 	server := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           api.Handler(),
@@ -56,7 +58,7 @@ func run() error {
 	botDone := make(chan struct{})
 	if cfg.BotToken != "" {
 		a := &agent.Agent{
-			Store: store,
+			Store: expenses,
 			LLM: &agent.Client{
 				BaseURL: cfg.LLMURL,
 				Key:     cfg.LLMKey,

@@ -18,35 +18,35 @@ var (
 )
 
 type User struct {
-	ID       int64  `json:"id,string"`
-	Name     string `json:"name"`
-	Username string `json:"username"`
+	ID       int64
+	Name     string
+	Username string
 }
 type Expense struct {
-	Version   int64     `json:"version,string"`
-	ID        int64     `json:"id,string"`
-	UserID    int64     `json:"user_id,string"`
-	Amount    int64     `json:"amount,string"`
-	Category  string    `json:"category"`
-	SpentAt   string    `json:"spent_at"`
-	Comment   string    `json:"comment"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Version   int64
+	ID        int64
+	UserID    int64
+	Amount    int64
+	Category  string
+	SpentAt   string
+	Comment   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 type Input struct {
-	UserID   int64  `json:"user_id,string"`
-	Amount   int64  `json:"amount,string"`
-	Category string `json:"category"`
-	SpentAt  string `json:"spent_at"`
-	Comment  string `json:"comment"`
+	UserID   int64
+	Amount   int64
+	Category string
+	SpentAt  string
+	Comment  string
 }
 type Patch struct {
-	ExpectedVersion *int64  `json:"expected_version,string,omitempty"`
-	ExpectedAmount  *int64  `json:"-"`
-	Amount          *int64  `json:"amount,string"`
-	Category        *string `json:"category"`
-	SpentAt         *string `json:"spent_at"`
-	Comment         *string `json:"comment"`
+	ExpectedVersion *int64
+	ExpectedAmount  *int64
+	Amount          *int64
+	Category        *string
+	SpentAt         *string
+	Comment         *string
 }
 type Filter struct {
 	ID                         int64
@@ -56,9 +56,9 @@ type Filter struct {
 	Latest                     bool
 }
 type Page struct {
-	Items       []Expense `json:"items"`
-	Total       int64     `json:"total"`
-	TotalAmount int64     `json:"total_amount,string"`
+	Items       []Expense
+	Total       int64
+	TotalAmount int64
 }
 
 func Invalid(s string) error { return fmt.Errorf("%w: %s", ErrInvalid, s) }

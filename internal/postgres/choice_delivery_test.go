@@ -14,6 +14,7 @@ import (
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/botstate"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 	"github.com/LionJr/expenses/internal/telegram"
@@ -86,7 +87,7 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 		fmt.Fprint(w, `{"ok":true,"result":{"message_id":106}}`)
 	}))
 	defer server.Close()
-	bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{101: true}, Store: s, Agent: &agent.Agent{Store: s, LLM: provider, Location: time.UTC, Timeout: time.Second}}
+	bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{101: true}, Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 	if err := bot.Handle(ctx, privateUpdate(t, 9101, 100, "удали расходы choice-chain")); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +230,7 @@ func checkAPILockDeadline(t *testing.T, s *postgres.Store, id int64) {
 	if err = tx.QueryRowContext(ctx, "SELECT id FROM expenses WHERE id=$1 FOR UPDATE", id).Scan(&locked); err != nil {
 		t.Fatal(err)
 	}
-	handler := (&httpapi.API{Store: s, RequestTimeout: 20 * time.Millisecond}).Handler()
+	handler := (&httpapi.API{Store: expensesvc.New(s), RequestTimeout: 20 * time.Millisecond}).Handler()
 	request := httptest.NewRequest("PATCH", fmt.Sprintf("/api/expenses/%d", id), strings.NewReader(`{"comment":"must not overwrite locked row"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

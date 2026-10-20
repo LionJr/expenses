@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
+	"github.com/LionJr/expenses/internal/expensewire"
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 )
@@ -127,7 +129,7 @@ func TestPostgresIntegration(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				v, e := s.Mutate(ctx, "replay", 101, "create_expense", 0, expense.Input{Amount: 123, Category: "другое", SpentAt: "2026-10-17"}, expense.Patch{})
+				v, e := s.Execute(ctx, "replay", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: 123, Category: "другое", SpentAt: "2026-10-17"}})
 				results <- string(v)
 				errs <- e
 			}()
@@ -152,11 +154,18 @@ func TestPostgresIntegration(t *testing.T) {
 			}
 			id = got
 		}
+		// Recovery must win over new-command validation, including through the
+		// shared service: the operation may already have committed before a crash.
+		replayed, replayErr := expensesvc.New(s).Execute(ctx, "replay", 101, expense.Command{})
+		var recovered map[string]any
+		if replayErr != nil || json.Unmarshal(replayed, &recovered) != nil || recovered["id"] != id || recovered["operation"] != "create_expense" {
+			t.Fatalf("committed operation was revalidated: %s %v", replayed, replayErr)
+		}
 		p, e := s.List(ctx, expense.Filter{UserID: 101})
 		if e != nil || p.Total != 3 {
 			t.Fatalf("duplicate creation: %+v %v", p, e)
 		}
-		if _, e = s.Mutate(ctx, "invalid", 101, "create_expense", 0, expense.Input{Amount: -1}, expense.Patch{}); e == nil {
+		if _, e = s.Execute(ctx, "invalid", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: -1}}); e == nil {
 			t.Fatal("invalid operation committed")
 		}
 		var count int
@@ -193,7 +202,7 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 	})
 	t.Run("REST contract", func(t *testing.T) {
-		handler := (&httpapi.API{Store: s, Timezone: "Europe/Moscow"}).Handler()
+		handler := (&httpapi.API{Store: expensesvc.New(s), Timezone: "Europe/Moscow"}).Handler()
 		request := func(method, path, body string) *httptest.ResponseRecorder {
 			t.Helper()
 			r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -206,7 +215,7 @@ func TestPostgresIntegration(t *testing.T) {
 		if w.Code != 201 {
 			t.Fatalf("create %d %s", w.Code, w.Body)
 		}
-		var created expense.Expense
+		var created expensewire.Expense
 		if e = json.Unmarshal(w.Body.Bytes(), &created); e != nil {
 			t.Fatal(e)
 		}

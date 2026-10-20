@@ -117,6 +117,7 @@ func TestPollingFatalErrorsSurface(t *testing.T) {
 }
 
 type updateStore struct {
+	mu       sync.Mutex
 	sessions map[int64]json.RawMessage
 	rows     map[int64]*memoryStore
 	users    map[int64]int64
@@ -124,9 +125,13 @@ type updateStore struct {
 
 func (s *updateStore) UpdateUser(context.Context, int64, string, string) error { return nil }
 func (s *updateStore) LoadSession(_ context.Context, user int64) (json.RawMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.sessions[user], nil
 }
 func (s *updateStore) StartUpdate(ctx context.Context, id, user int64) (string, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.rows[id] == nil {
 		s.rows[id] = &memoryStore{}
 		s.users[id] = user
@@ -134,6 +139,8 @@ func (s *updateStore) StartUpdate(ctx context.Context, id, user int64) (string, 
 	return s.rows[id].StartUpdate(ctx, id, user)
 }
 func (s *updateStore) FinishUpdate(ctx context.Context, id int64, reply string, data json.RawMessage, user int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.rows[id].FinishUpdate(ctx, id, reply, data, user); err != nil {
 		return err
 	}
@@ -155,6 +162,8 @@ func (s *updateStore) FinishUpdate(ctx context.Context, id int64, reply string, 
 	return nil
 }
 func (s *updateStore) MarkSent(ctx context.Context, id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.rows[id].MarkSent(ctx, id); err != nil {
 		return err
 	}
@@ -165,6 +174,8 @@ func (s *updateStore) MarkSent(ctx context.Context, id int64) error {
 	return nil
 }
 func (s *updateStore) FailDelivery(ctx context.Context, id int64, code int, permanent bool, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := s.rows[id].FailDelivery(ctx, id, code, permanent, at); err != nil {
 		return err
 	}
@@ -175,6 +186,8 @@ func (s *updateStore) FailDelivery(ctx context.Context, id int64, code int, perm
 	return nil
 }
 func (s *updateStore) PendingDeliveries(context.Context, int) ([]botstate.Delivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []botstate.Delivery
 	for id, row := range s.rows {
 		if row.state == "done" && !row.retryAt.After(time.Now()) {
@@ -249,9 +262,13 @@ func TestRevokedUserDoesNotReceivePendingReply(t *testing.T) {
 }
 
 func (s *updateStore) ChoicePromptCurrent(_ context.Context, id, user int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return choiceCurrent(s.sessions[user], id), nil
 }
 func (s *updateStore) SupersedeDelivery(ctx context.Context, id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.rows[id].SupersedeDelivery(ctx, id)
 }
 
@@ -259,6 +276,8 @@ func (s *updateStore) MarkChoiceSent(ctx context.Context, id, messageID int64) e
 	if err := s.MarkSent(ctx, id); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	user := s.users[id]
 	s.sessions[user] = withMessageID(s.sessions[user], id, messageID)
 	return nil

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensewire"
 	"github.com/LionJr/expenses/web"
 )
 
@@ -99,7 +100,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, map[string]any{"items": v})
+	write(w, 200, map[string]any{"items": expensewire.FromUsers(v)})
 }
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -131,14 +132,15 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, v)
+	write(w, 200, expensewire.FromPage(v))
 }
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
-	var i expense.Input
-	if e := decode(w, r, &i); e != nil {
+	var body expensewire.Input
+	if e := decode(w, r, &body); e != nil {
 		a.fail(w, e)
 		return
 	}
+	i := body.Domain()
 	if e := i.Validate(); e != nil {
 		a.fail(w, e)
 		return
@@ -148,7 +150,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 201, v)
+	write(w, 201, expensewire.FromExpense(v))
 }
 func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 	id, e := pathID(r)
@@ -156,11 +158,12 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	var p expense.Patch
-	if e = decode(w, r, &p); e != nil {
+	var body expensewire.Patch
+	if e = decode(w, r, &body); e != nil {
 		a.fail(w, e)
 		return
 	}
+	p := body.Domain()
 	if e = p.Validate(); e != nil {
 		a.fail(w, e)
 		return
@@ -170,7 +173,7 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, v)
+	write(w, 200, expensewire.FromExpense(v))
 }
 func (a *API) delete(w http.ResponseWriter, r *http.Request) {
 	id, e := pathID(r)

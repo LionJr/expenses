@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/LionJr/expenses/internal/botstate"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/LionJr/expenses/internal/agent"
+	"github.com/LionJr/expenses/internal/botstate"
 )
 
 type memoryStore struct {
@@ -57,10 +58,15 @@ func (s *memoryStore) MarkSent(_ context.Context, id int64) error {
 	return nil
 }
 
-type responder struct{ calls int }
+type responder struct {
+	mu    sync.Mutex
+	calls int
+}
 
 func (r *responder) Reply(_ context.Context, _, _ int64, _ string, s agent.Session) (string, agent.Session, error) {
+	r.mu.Lock()
 	r.calls++
+	r.mu.Unlock()
 	return "Готово", s, nil
 }
 func update(t *testing.T, body string) Update {
