@@ -18,7 +18,9 @@ func (b *Bot) handleBatch(ctx context.Context, updates []Update) (int, error) {
 		}
 		groups[user] = append(groups[user], i)
 	}
+
 	failures := make([]error, len(updates))
+
 	var workers sync.WaitGroup
 	for _, indices := range groups {
 		workers.Go(func() {
@@ -32,6 +34,7 @@ func (b *Bot) handleBatch(ctx context.Context, updates []Update) (int, error) {
 		})
 	}
 	workers.Wait()
+
 	completed := len(updates)
 	var first error
 	for i, err := range failures {
@@ -39,6 +42,7 @@ func (b *Bot) handleBatch(ctx context.Context, updates []Update) (int, error) {
 			completed, first = i, err
 		}
 	}
+
 	// Fatal transport errors must surface even if an earlier update had a
 	// retryable failure. No worker is left running when Run shuts down.
 	for _, err := range failures {

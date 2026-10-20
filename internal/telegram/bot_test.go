@@ -107,7 +107,7 @@ func TestDeliveryFailureUsesSavedReply(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sends++
 		if sends == 1 {
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `{"ok":false,"error_code":500}`)
 			return
 		}

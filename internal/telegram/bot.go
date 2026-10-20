@@ -29,9 +29,11 @@ type Storage interface {
 	PendingDeliveries(context.Context, int) ([]botstate.Delivery, error)
 	FailDelivery(context.Context, int64, int, bool, time.Time) error
 }
+
 type Responder interface {
 	Reply(context.Context, int64, int64, string, agent.Session) (string, agent.Session, error)
 }
+
 type Bot struct {
 	Token   string
 	BaseURL string
@@ -40,6 +42,7 @@ type Bot struct {
 	Store   Storage
 	Agent   Responder
 }
+
 type User struct {
 	ID        int64  `json:"id"`
 	FirstName string `json:"first_name"`
@@ -47,6 +50,7 @@ type User struct {
 	Username  string `json:"username"`
 	IsBot     bool   `json:"is_bot"`
 }
+
 type Update struct {
 	ID      int64 `json:"update_id"`
 	Message *struct {
@@ -60,37 +64,44 @@ type Update struct {
 	} `json:"message"`
 }
 
+type sentMessage struct {
+	ID int64 `json:"message_id"`
+}
+
+type apiResponse struct {
+	OK         bool            `json:"ok"`
+	Result     json.RawMessage `json:"result"`
+	ErrorCode  int             `json:"error_code"`
+	Parameters struct {
+		RetryAfter int `json:"retry_after"`
+	} `json:"parameters"`
+}
+
 func (b *Bot) call(ctx context.Context, method string, payload any, result any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	base := b.BaseURL
-	if base == "" {
-		base = "https://api.telegram.org"
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", base+"/bot"+b.Token+"/"+method, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.BaseURL+"/bot"+b.Token+"/"+method, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("invalid Telegram URL")
 	}
 	req.Header.Set("Content-Type", "application/json")
+
 	resp, err := b.HTTP.Do(req)
 	if err != nil {
-		return fmt.Errorf("Telegram connection failed")
+		return fmt.Errorf("telegram connection failed")
 	}
 	defer resp.Body.Close()
-	var envelope struct {
-		OK         bool            `json:"ok"`
-		Result     json.RawMessage `json:"result"`
-		ErrorCode  int             `json:"error_code"`
-		Parameters struct {
-			RetryAfter int `json:"retry_after"`
-		} `json:"parameters"`
-	}
+
+	var envelope apiResponse
 	if err = json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
+		if resp.StatusCode != http.StatusOK {
+			return &APIError{Code: resp.StatusCode}
+		}
 		return fmt.Errorf("invalid Telegram response")
 	}
-	if resp.StatusCode != 200 || !envelope.OK {
+	if resp.StatusCode != http.StatusOK || !envelope.OK {
 		code := envelope.ErrorCode
 		if code == 0 {
 			code = resp.StatusCode
@@ -123,7 +134,8 @@ func (b *Bot) Run(ctx context.Context) error {
 			continue
 		}
 		var updates []Update
-		err := b.call(ctx, "getUpdates", map[string]any{"offset": offset, "timeout": 25, "limit": 20, "allowed_updates": []string{"message"}}, &updates)
+		// Limit idle long polling to the default delivery retry interval.
+		err := b.call(ctx, "getUpdates", map[string]any{"offset": offset, "timeout": 3, "limit": 20, "allowed_updates": []string{"message"}}, &updates)
 		if err != nil {
 			if fatal(err) {
 				return err
@@ -148,6 +160,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	return ctx.Err()
 }
+
 func pause(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -158,6 +171,7 @@ func pause(ctx context.Context, d time.Duration) bool {
 		return true
 	}
 }
+
 func (b *Bot) Handle(ctx context.Context, u Update) error {
 	m := u.Message
 	if m == nil || m.From == nil || m.From.IsBot || m.Chat.Type != "private" || m.Chat.ID != m.From.ID || !b.Allowed[m.From.ID] {
@@ -239,6 +253,7 @@ func retryDelay(err error) time.Duration {
 	}
 	return 3 * time.Second
 }
+
 func (b *Bot) deliverPending(ctx context.Context) error {
 	deliveries, err := b.Store.PendingDeliveries(ctx, 20)
 	if err != nil {
@@ -251,9 +266,10 @@ func (b *Bot) deliverPending(ctx context.Context) error {
 	}
 	return nil
 }
+
 func (b *Bot) deliver(ctx context.Context, d botstate.Delivery) error {
 	if !b.Allowed[d.UserID] {
-		return b.Store.FailDelivery(ctx, d.UpdateID, 403, true, time.Now())
+		return b.Store.FailDelivery(ctx, d.UpdateID, http.StatusForbidden, true, time.Now())
 	}
 	if d.ChoicePrompt {
 		current, err := b.Store.ChoicePromptCurrent(ctx, d.UpdateID, d.UserID)
@@ -264,12 +280,10 @@ func (b *Bot) deliver(ctx context.Context, d botstate.Delivery) error {
 			return b.Store.SupersedeDelivery(ctx, d.UpdateID)
 		}
 	}
-	var sent struct {
-		ID int64 `json:"message_id"`
-	}
+	var sent sentMessage
 	err := b.call(ctx, "sendMessage", map[string]any{"chat_id": d.UserID, "text": formatReply(d.Reply), "parse_mode": "HTML"}, &sent)
 	if err == nil && d.ChoicePrompt && sent.ID <= 0 {
-		err = fmt.Errorf("Telegram choice prompt missing message ID")
+		err = fmt.Errorf("telegram choice prompt missing message ID")
 	}
 	if err == nil {
 		if d.ChoicePrompt {
@@ -288,7 +302,7 @@ func (b *Bot) deliver(ctx context.Context, d botstate.Delivery) error {
 	permanent := false
 	if errors.As(err, &api) {
 		code = api.Code
-		permanent = code >= 400 && code < 500 && code != 429
+		permanent = code >= http.StatusBadRequest && code < http.StatusInternalServerError && code != http.StatusTooManyRequests
 	}
 	delay := retryDelay(err)
 	if e := b.Store.FailDelivery(ctx, d.UpdateID, code, permanent, time.Now().Add(delay)); e != nil {

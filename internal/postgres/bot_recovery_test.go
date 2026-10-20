@@ -142,19 +142,19 @@ func checkDeliveryOutbox(t *testing.T, s *postgres.Store) {
 	if !contains() {
 		t.Fatal("saved reply not in outbox")
 	}
-	if err := s.FailDelivery(ctx, id, 429, false, time.Now().Add(time.Hour)); err != nil {
+	if err := s.FailDelivery(ctx, id, http.StatusTooManyRequests, false, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if contains() {
 		t.Fatal("Retry-After deadline ignored")
 	}
-	if err := s.FailDelivery(ctx, id, 503, false, time.Now().Add(-time.Second)); err != nil {
+	if err := s.FailDelivery(ctx, id, http.StatusServiceUnavailable, false, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if !contains() {
 		t.Fatal("due retry not available")
 	}
-	if err := s.FailDelivery(ctx, id, 503, false, time.Now()); err != nil {
+	if err := s.FailDelivery(ctx, id, http.StatusServiceUnavailable, false, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if contains() {
@@ -165,7 +165,7 @@ func checkDeliveryOutbox(t *testing.T, s *postgres.Store) {
 		t.Fatalf("terminal state=%s err=%v", state, err)
 	}
 	var attempts, code int
-	if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT delivery_attempts,last_error_code FROM telegram_updates WHERE update_id=$1", id).Scan(&attempts, &code); err != nil || attempts != 3 || code != 503 {
+	if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT delivery_attempts,last_error_code FROM telegram_updates WHERE update_id=$1", id).Scan(&attempts, &code); err != nil || attempts != 3 || code != http.StatusServiceUnavailable {
 		t.Fatal("delivery metadata not persisted")
 	}
 }
@@ -228,7 +228,7 @@ func checkBaselineReopen(t *testing.T, s *postgres.Store, dsn string) {
 		t.Fatalf("upgrade lost reply: %+v %v", pending, err)
 	}
 
-	if err = upgraded.FailDelivery(ctx, 1, 403, true, time.Now()); err != nil {
+	if err = upgraded.FailDelivery(ctx, 1, http.StatusForbidden, true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	state, _, err := upgraded.StartUpdate(ctx, 1, 101)

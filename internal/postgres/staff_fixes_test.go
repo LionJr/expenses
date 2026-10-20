@@ -51,7 +51,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		}
 		path := fmt.Sprintf("/api/expenses/%d", e.ID)
 		first := request("PATCH", path, fmt.Sprintf(`{"amount":"20000","expected_version":"%d"}`, e.Version))
-		if first.Code != 200 {
+		if first.Code != http.StatusOK {
 			t.Fatal(first.Code, first.Body)
 		}
 		var changed expensewire.Expense
@@ -63,7 +63,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		}
 		// A stale full form is rejected even if it resends the previous amount.
 		stale := request("PATCH", path, fmt.Sprintf(`{"amount":"10000","category":"жильё","spent_at":"2045-10-19","comment":"new comment","expected_version":"%d"}`, e.Version))
-		if stale.Code != 409 {
+		if stale.Code != http.StatusConflict {
 			t.Fatal(stale.Code, stale.Body)
 		}
 		page, err := expensesvc.New(s).List(ctx, expense.Filter{ID: e.ID, UserID: 101})
@@ -71,7 +71,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			t.Fatalf("stale form changed record: %+v %v", page, err)
 		}
 		fresh := request("PATCH", path, `{"comment":"","expected_version":"2"}`)
-		if fresh.Code != 200 {
+		if fresh.Code != http.StatusOK {
 			t.Fatal(fresh.Code, fresh.Body)
 		}
 		var wire map[string]any
@@ -79,10 +79,10 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if wire["version"] != "3" || wire["amount"] != "20000" || wire["comment"] != "" {
 			t.Fatal(wire)
 		}
-		if w := request("PATCH", path, `{"expected_version":"3"}`); w.Code != 400 {
+		if w := request("PATCH", path, `{"expected_version":"3"}`); w.Code != http.StatusBadRequest {
 			t.Fatal("version-only patch accepted")
 		}
-		if w := request("PATCH", path, `{"comment":"x","expected_version":"0"}`); w.Code != 400 {
+		if w := request("PATCH", path, `{"comment":"x","expected_version":"0"}`); w.Code != http.StatusBadRequest {
 			t.Fatal("invalid version accepted")
 		}
 		if _, err := expensesvc.New(s).Update(ctx, 202, e.ID, expense.Patch{Comment: &e.Comment, ExpectedVersion: &e.Version}); !errors.Is(err, expense.ErrNotFound) {
@@ -117,11 +117,11 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 	})
 	t.Run("invalid text is a controlled input error", func(t *testing.T) {
 		w := request("POST", "/api/expenses", `{"user_id":"101","amount":"100","category":"еда","spent_at":"2045-10-19","comment":"bad\u0000comment"}`)
-		if w.Code != 400 {
+		if w.Code != http.StatusBadRequest {
 			t.Fatal(w.Code, w.Body)
 		}
 		e := create(t, "valid text")
-		if w := request("PATCH", fmt.Sprintf("/api/expenses/%d", e.ID), `{"comment":"bad\u0000comment"}`); w.Code != 400 {
+		if w := request("PATCH", fmt.Sprintf("/api/expenses/%d", e.ID), `{"comment":"bad\u0000comment"}`); w.Code != http.StatusBadRequest {
 			t.Fatal(w.Code, w.Body)
 		}
 		if _, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "bad\x00search"}); !errors.Is(err, expense.ErrInvalid) {

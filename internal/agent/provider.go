@@ -7,6 +7,7 @@ import (
 	"github.com/LionJr/expenses/internal/expense"
 	"log/slog"
 	"net"
+	"net/http"
 	"time"
 )
 
@@ -38,13 +39,13 @@ func providerFailure(kind string, status, attempts int, cause error) error {
 }
 func statusKind(status int) string {
 	switch {
-	case status == 401 || status == 403:
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return "authentication"
-	case status == 404:
+	case status == http.StatusNotFound:
 		return "not_found"
-	case status == 429:
+	case status == http.StatusTooManyRequests:
 		return "rate_limited"
-	case status >= 500:
+	case status >= http.StatusInternalServerError:
 		return "provider_unavailable"
 	default:
 		return "invalid_request"

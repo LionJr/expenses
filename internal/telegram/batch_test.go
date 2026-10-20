@@ -121,7 +121,7 @@ func TestBatchSurfacesFatalErrorAfterEarlierRetryableFailure(t *testing.T) {
 		if user == 42 {
 			return "", s, errors.New("retryable")
 		}
-		return "", s, &APIError{Code: 401}
+		return "", s, &APIError{Code: http.StatusUnauthorized}
 	}))
 	n, err := b.handleBatch(context.Background(), batchUpdates(t))
 	if n != 0 || !fatal(err) {

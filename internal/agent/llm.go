@@ -65,7 +65,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []Tool)
 		if e != nil {
 			return Message{}, providerFailure("response_read", resp.StatusCode, attempt+1, e)
 		}
-		if (resp.StatusCode == 429 || resp.StatusCode >= 500) && attempt < 2 {
+		if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= http.StatusInternalServerError) && attempt < 2 {
 			delay := time.Duration(attempt+1) * time.Second
 			if v := resp.Header.Get("Retry-After"); v != "" {
 				if n, e := strconv.Atoi(v); e == nil {
@@ -90,7 +90,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []Tool)
 			}
 			continue
 		}
-		if resp.StatusCode != 200 {
+		if resp.StatusCode != http.StatusOK {
 			return Message{}, providerFailure(statusKind(resp.StatusCode), resp.StatusCode, attempt+1, nil)
 		}
 		var result struct {

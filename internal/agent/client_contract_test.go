@@ -44,12 +44,12 @@ func TestClientFailurePolicy(t *testing.T) {
 		body     string
 		attempts int
 	}{
-		{"authentication is not retried", 401, `{}`, 1},
-		{"bad request is not retried", 400, `{}`, 1},
-		{"rate limit retries are bounded", 429, `{}`, 3},
-		{"server error retries are bounded", 503, `{}`, 3},
-		{"malformed response", 200, `not-json`, 1},
-		{"missing choices", 200, `{"choices":[]}`, 1},
+		{"authentication is not retried", http.StatusUnauthorized, `{}`, 1},
+		{"bad request is not retried", http.StatusBadRequest, `{}`, 1},
+		{"rate limit retries are bounded", http.StatusTooManyRequests, `{}`, 3},
+		{"server error retries are bounded", http.StatusServiceUnavailable, `{}`, 3},
+		{"malformed response", http.StatusOK, `not-json`, 1},
+		{"missing choices", http.StatusOK, `{"choices":[]}`, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := 0

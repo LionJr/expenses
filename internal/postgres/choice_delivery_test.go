@@ -77,7 +77,7 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 		if strings.HasPrefix(request.Text, "Какой расход удалить?") {
 			promptAttempts++
 			if promptAttempts == 1 {
-				w.WriteHeader(503)
+				w.WriteHeader(http.StatusServiceUnavailable)
 				fmt.Fprint(w, `{"ok":false,"error_code":503}`)
 				return
 			}
@@ -210,7 +210,7 @@ func checkChoiceAcknowledgement(t *testing.T, s *postgres.Store) {
 		t.Fatal("expired delivery was not retired")
 	}
 	finish(9204)
-	if err = s.FailDelivery(ctx, 9204, 403, true, time.Now()); err != nil {
+	if err = s.FailDelivery(ctx, 9204, http.StatusForbidden, true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if session = loadChoiceSession(t, s); session.Choice != nil || len(session.Candidates) != 0 || session.Pending != nil {

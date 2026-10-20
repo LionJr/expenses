@@ -73,6 +73,7 @@ func run() error {
 			Timeout:  cfg.LLMTimeout,
 		}
 		bot := &telegram.Bot{
+			BaseURL: cfg.TelegramURL,
 			Token:   cfg.BotToken,
 			HTTP:    &http.Client{Timeout: 35 * time.Second},
 			Allowed: allowed,

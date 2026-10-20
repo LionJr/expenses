@@ -86,7 +86,7 @@ func TestChoiceWaitsForDeliveryAndRejectsEarlierQueuedReply(t *testing.T) {
 		if strings.HasPrefix(payload.Text, "Какой расход удалить?") {
 			promptAttempts++
 			if promptAttempts == 1 {
-				w.WriteHeader(503)
+				w.WriteHeader(http.StatusServiceUnavailable)
 				fmt.Fprint(w, `{"ok":false,"error_code":503}`)
 				return
 			}
@@ -140,7 +140,7 @@ func TestNewRequestSupersedesOldChoicePrompt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sends++
 		if sends == 1 {
-			w.WriteHeader(503)
+			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprint(w, `{"ok":false,"error_code":503}`)
 			return
 		}

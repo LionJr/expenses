@@ -17,7 +17,7 @@ import (
 )
 
 func TestDeliveryPermanentFailureIsTerminal(t *testing.T) {
-	for _, code := range []int{400, 403} {
+	for _, code := range []int{http.StatusBadRequest, http.StatusForbidden} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			sends := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,7 @@ func TestTransientDeliveryRetriesAreBounded(t *testing.T) {
 	sends := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sends++
-		w.WriteHeader(503)
+		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `{"ok":false,"error_code":503}`)
 	}))
 	defer server.Close()
@@ -77,7 +77,7 @@ func TestRetryAfterIsPersistedWithoutSleepingPolling(t *testing.T) {
 	sends := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sends++
-		w.WriteHeader(429)
+		w.WriteHeader(http.StatusTooManyRequests)
 		fmt.Fprint(w, `{"ok":false,"error_code":429,"parameters":{"retry_after":60}}`)
 	}))
 	defer server.Close()
@@ -88,7 +88,7 @@ func TestRetryAfterIsPersistedWithoutSleepingPolling(t *testing.T) {
 	if err := b.Handle(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
-	if store.retryAt.Before(before.Add(60*time.Second)) || store.state != "done" || store.errorCode != 429 {
+	if store.retryAt.Before(before.Add(60*time.Second)) || store.state != "done" || store.errorCode != http.StatusTooManyRequests {
 		t.Fatal("Retry-After was not persisted")
 	}
 	if err := b.Handle(context.Background(), u); err != nil {
@@ -99,7 +99,7 @@ func TestRetryAfterIsPersistedWithoutSleepingPolling(t *testing.T) {
 	}
 }
 func TestPollingFatalErrorsSurface(t *testing.T) {
-	for _, code := range []int{401, 404, 409} {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(code)
@@ -227,7 +227,7 @@ func TestUndeliverableChatDoesNotBlockOtherUserOrOffset(t *testing.T) {
 		sends[message.Chat]++
 		mu.Unlock()
 		if message.Chat == 42 {
-			w.WriteHeader(403)
+			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprint(w, `{"ok":false,"error_code":403}`)
 			return
 		}

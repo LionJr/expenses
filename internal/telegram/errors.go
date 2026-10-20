@@ -3,6 +3,7 @@ package telegram
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -17,5 +18,5 @@ func (e *APIError) Error() string {
 }
 func fatal(err error) bool {
 	var api *APIError
-	return errors.As(err, &api) && (api.Code == 401 || api.Code == 409 || api.Code == 404)
+	return errors.As(err, &api) && (api.Code == http.StatusUnauthorized || api.Code == http.StatusConflict || api.Code == http.StatusNotFound)
 }

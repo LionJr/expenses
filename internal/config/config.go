@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	DatabaseURL, Addr, BotToken, LLMURL, LLMKey, LLMModel string
+	TelegramURL                                           string
 	Allowed                                               []int64
 	Location                                              *time.Location
 	LLMTimeout                                            time.Duration
@@ -31,6 +32,7 @@ func initialize() (Config, error) {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		Addr:        env("HTTP_ADDR", ":8080"),
 		BotToken:    os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramURL: "https://api.telegram.org",
 		LLMURL:      env("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
 		LLMKey:      os.Getenv("LLM_API_KEY"),
 		LLMModel:    env("LLM_MODEL", "llama-3.3-70b-versatile"),

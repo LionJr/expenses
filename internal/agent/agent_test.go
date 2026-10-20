@@ -325,7 +325,7 @@ func TestLLMRetryAndCancellation(t *testing.T) {
 		}
 		if requests < 3 {
 			w.Header().Set("Retry-After", "0")
-			w.WriteHeader(429)
+			w.WriteHeader(http.StatusTooManyRequests)
 			fmt.Fprint(w, `{}`)
 			return
 		}
