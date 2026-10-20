@@ -13,6 +13,7 @@ import (
 )
 
 type Repository interface {
+	ValidateCommand(expense.Command) error
 	List(context.Context, expense.Filter) (expense.Page, error)
 	OperationResult(context.Context, string, int64) (json.RawMessage, error)
 	Execute(context.Context, string, int64, expense.Command) (json.RawMessage, error)

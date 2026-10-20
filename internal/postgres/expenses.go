@@ -26,10 +26,6 @@ func (s *Store) List(ctx context.Context, f expense.Filter) (expense.Page, error
 }
 func list(ctx context.Context, q queryer, f expense.Filter) (expense.Page, error) {
 	p := expense.Page{Items: []expense.Expense{}}
-	f = f.Normalize()
-	if err := f.Validate(); err != nil {
-		return p, err
-	}
 	// One statement gives the page and its aggregate the same MVCC snapshot.
 	where := ` WHERE ($1::bigint=0 OR user_id=$1) AND ($2='' OR category=$2) AND ($3='' OR spent_at>=NULLIF($3,'')::date) AND ($4='' OR spent_at<=NULLIF($4,'')::date) AND ($5='' OR strpos(lower(comment || ' ' || category),lower($5))>0) AND ($8::bigint=0 OR id=$8)`
 	order := "spent_at DESC,id DESC"
@@ -78,9 +74,6 @@ func (s *Store) Create(ctx context.Context, i expense.Input) (expense.Expense, e
 	return result, err
 }
 func create(ctx context.Context, q queryer, i expense.Input) (expense.Expense, error) {
-	if err := i.Validate(); err != nil {
-		return expense.Expense{}, err
-	}
 	return scan(q.QueryRowContext(ctx, "INSERT INTO expenses(user_id,amount,category,spent_at,comment) VALUES($1,$2,$3,$4::date,$5) RETURNING "+columns, i.UserID, i.Amount, i.Category, i.SpentAt, i.Comment))
 }
 func (s *Store) Update(ctx context.Context, owner, id int64, p expense.Patch) (expense.Expense, error) {
@@ -93,12 +86,6 @@ func (s *Store) Update(ctx context.Context, owner, id int64, p expense.Patch) (e
 	return result, err
 }
 func update(ctx context.Context, q queryer, owner, id int64, p expense.Patch) (expense.Expense, error) {
-	if err := p.Validate(); err != nil {
-		return expense.Expense{}, err
-	}
-	if id <= 0 {
-		return expense.Expense{}, expense.Invalid("неверный ID")
-	}
 	e, err := scan(q.QueryRowContext(ctx, `UPDATE expenses SET amount=COALESCE($3,amount),category=COALESCE($4,category),spent_at=COALESCE($5::date,spent_at),comment=COALESCE($6,comment),updated_at=now(),version=version+1 WHERE id=$1 AND ($2::bigint=0 OR user_id=$2) AND ($7::bigint IS NULL OR amount=$7) AND ($8::bigint IS NULL OR version=$8) RETURNING `+columns, id, owner, p.Amount, p.Category, p.SpentAt, p.Comment, p.ExpectedAmount, p.ExpectedVersion))
 	if errors.Is(err, expense.ErrNotFound) && p.ExpectedVersion != nil {
 		var exists bool

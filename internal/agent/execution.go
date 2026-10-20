@@ -128,10 +128,6 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		if p.Category != nil {
 			f.Category = *p.Category
 		}
-		f = f.Normalize()
-		if err = f.Validate(); err != nil {
-			return nil, err
-		}
 		page, e := a.Store.List(ctx, f)
 		if e != nil {
 			return nil, e
@@ -172,9 +168,6 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		if p.Comment != nil {
 			i.Comment = *p.Comment
 		}
-		if err = i.Validate(); err != nil {
-			return nil, err
-		}
 	} else {
 		id, err = strconv.ParseInt(p.ID, 10, 64)
 		if err != nil || id <= 0 {
@@ -208,15 +201,17 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 			}
 		}
 
-		if name == "update_expense" {
-			if err = patch.Validate(); err != nil {
-				return nil, err
-			}
-		}
 		if selected != 0 && selected != id {
 			return nil, expense.Invalid("ID не совпадает с выбором пользователя")
 		}
 		if s.CandidateTotal > 1 && selected != id && s.LatestID != id {
+			operation := expense.Delete
+			if name == "update_expense" {
+				operation = expense.Update
+			}
+			if err := a.Store.ValidateCommand(expense.Command{Operation: operation, ID: id, Patch: patch}); err != nil {
+				return nil, err
+			}
 			s.Pending = &PendingAction{Kind: name, Patch: patch, ExpectedAmount: patch.ExpectedAmount, IntentValidated: true}
 			return nil, expense.Invalid("выберите расход из списка")
 		}

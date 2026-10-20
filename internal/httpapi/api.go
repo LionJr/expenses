@@ -123,11 +123,6 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		}
 		f.UserID = n
 	}
-	f = f.Normalize()
-	if e := f.Validate(); e != nil {
-		a.fail(w, e)
-		return
-	}
 	v, e := a.Store.List(r.Context(), f)
 	if e != nil {
 		a.fail(w, e)
@@ -142,10 +137,6 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	i := body.Domain()
-	if e := i.Validate(); e != nil {
-		a.fail(w, e)
-		return
-	}
 	v, e := a.Store.Create(r.Context(), i)
 	if e != nil {
 		a.fail(w, e)
@@ -165,10 +156,6 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := body.Domain()
-	if e = p.Validate(); e != nil {
-		a.fail(w, e)
-		return
-	}
 	v, e := a.Store.Update(r.Context(), 0, id, p)
 	if e != nil {
 		a.fail(w, e)

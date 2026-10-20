@@ -25,12 +25,12 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 	ctx := context.Background()
 	create := func(t *testing.T, comment string) expense.Expense {
 		t.Helper()
-		e, err := s.Create(ctx, expense.Input{UserID: 101, Amount: 10000, Category: "жильё", SpentAt: "2045-10-19", Comment: comment})
+		e, err := expensesvc.New(s).Create(ctx, expense.Input{UserID: 101, Amount: 10000, Category: "жильё", SpentAt: "2045-10-19", Comment: comment})
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() {
-			if err := s.Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
+			if err := expensesvc.New(s).Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
 				t.Error(err)
 			}
 		})
@@ -66,7 +66,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if stale.Code != 409 {
 			t.Fatal(stale.Code, stale.Body)
 		}
-		page, err := s.List(ctx, expense.Filter{ID: e.ID, UserID: 101})
+		page, err := expensesvc.New(s).List(ctx, expense.Filter{ID: e.ID, UserID: 101})
 		if err != nil || page.Items[0].Amount != 20000 || page.Items[0].Comment != "version original" || page.Items[0].Version != 2 {
 			t.Fatalf("stale form changed record: %+v %v", page, err)
 		}
@@ -85,7 +85,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if w := request("PATCH", path, `{"comment":"x","expected_version":"0"}`); w.Code != 400 {
 			t.Fatal("invalid version accepted")
 		}
-		if _, err := s.Update(ctx, 202, e.ID, expense.Patch{Comment: &e.Comment, ExpectedVersion: &e.Version}); !errors.Is(err, expense.ErrNotFound) {
+		if _, err := expensesvc.New(s).Update(ctx, 202, e.ID, expense.Patch{Comment: &e.Comment, ExpectedVersion: &e.Version}); !errors.Is(err, expense.ErrNotFound) {
 			t.Fatal("foreign version check disclosed a row", err)
 		}
 	})
@@ -110,7 +110,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if counts[200] != 1 || counts[409] != 1 {
 			t.Fatal(counts)
 		}
-		page, err := s.List(ctx, expense.Filter{ID: e.ID, UserID: 101})
+		page, err := expensesvc.New(s).List(ctx, expense.Filter{ID: e.ID, UserID: 101})
 		if err != nil || page.Items[0].Version != 2 {
 			t.Fatal("wrong version after concurrent updates")
 		}
@@ -124,7 +124,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if w := request("PATCH", fmt.Sprintf("/api/expenses/%d", e.ID), `{"comment":"bad\u0000comment"}`); w.Code != 400 {
 			t.Fatal(w.Code, w.Body)
 		}
-		if _, err := s.List(ctx, expense.Filter{UserID: 101, Search: "bad\x00search"}); !errors.Is(err, expense.ErrInvalid) {
+		if _, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "bad\x00search"}); !errors.Is(err, expense.ErrInvalid) {
 			t.Fatal("invalid search accepted", err)
 		}
 		if err := s.SaveSession(ctx, 101, json.RawMessage(`{"request":{"text":"bad\u0000text"}}`)); !errors.Is(err, expense.ErrInvalid) {
@@ -139,7 +139,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if err != nil || !strings.Contains(reply, "Выполнено") {
 			t.Fatal(reply, err)
 		}
-		page, err := s.List(ctx, expense.Filter{UserID: 101, ID: e.ID})
+		page, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: e.ID})
 		if err != nil || page.Items[0].Amount != 1200000 {
 			t.Fatal("alias update failed", page, err)
 		}
@@ -216,11 +216,11 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		if err := bot.Handle(ctx, privateUpdate(t, 19202, 19202, "350,50")); err != nil {
 			t.Fatal(err)
 		}
-		page, err := s.List(ctx, expense.Filter{UserID: 101, Search: "create-draft-fixed"})
+		page, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "create-draft-fixed"})
 		if err != nil || page.Total != 1 || page.Items[0].Amount != 35050 || loadChoiceSession(t, s).Request != nil {
 			t.Fatal("draft creation failed", page, err)
 		}
-		if err := s.Delete(ctx, 0, page.Items[0].ID); err != nil {
+		if err := expensesvc.New(s).Delete(ctx, 0, page.Items[0].ID); err != nil {
 			t.Fatal(err)
 		}
 	})

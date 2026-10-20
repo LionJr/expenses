@@ -14,7 +14,9 @@ type Repository interface {
 	Create(context.Context, expense.Input) (expense.Expense, error)
 	Update(context.Context, int64, int64, expense.Patch) (expense.Expense, error)
 	Delete(context.Context, int64, int64) error
-	Execute(context.Context, string, int64, expense.Command) (json.RawMessage, error)
+	// Execute calls prepare only after checking the journal under its transaction
+	// lock. Replays return the committed result without preparing a new command.
+	Execute(context.Context, string, int64, func() (expense.Command, error)) (json.RawMessage, error)
 	OperationResult(context.Context, string, int64) (json.RawMessage, error)
 }
 
@@ -31,19 +33,19 @@ func (s *Service) List(ctx context.Context, f expense.Filter) (expense.Page, err
 	return s.repository.List(ctx, f)
 }
 func (s *Service) Create(ctx context.Context, i expense.Input) (expense.Expense, error) {
-	if err := (expense.Command{Operation: expense.Create, Input: i}).Validate(); err != nil {
+	if err := s.ValidateCommand(expense.Command{Operation: expense.Create, Input: i}); err != nil {
 		return expense.Expense{}, err
 	}
 	return s.repository.Create(ctx, i)
 }
 func (s *Service) Update(ctx context.Context, owner, id int64, p expense.Patch) (expense.Expense, error) {
-	if err := (expense.Command{Operation: expense.Update, ID: id, Patch: p}).Validate(); err != nil {
+	if err := s.ValidateCommand(expense.Command{Operation: expense.Update, ID: id, Patch: p}); err != nil {
 		return expense.Expense{}, err
 	}
 	return s.repository.Update(ctx, owner, id, p)
 }
 func (s *Service) Delete(ctx context.Context, owner, id int64) error {
-	if err := (expense.Command{Operation: expense.Delete, ID: id}).Validate(); err != nil {
+	if err := s.ValidateCommand(expense.Command{Operation: expense.Delete, ID: id}); err != nil {
 		return err
 	}
 	return s.repository.Delete(ctx, owner, id)
@@ -55,7 +57,14 @@ func (s *Service) Execute(ctx context.Context, key string, owner int64, c expens
 	if owner <= 0 {
 		return nil, expense.ErrNotFound
 	}
-	// The repository checks for a committed receipt before validating a new
-	// command, within the same lock/transaction that protects the mutation.
-	return s.repository.Execute(ctx, key, owner, c)
+	return s.repository.Execute(ctx, key, owner, func() (expense.Command, error) {
+		c.Input.UserID = owner
+		return c, s.ValidateCommand(c)
+	})
+}
+
+// ValidateCommand checks a draft before the agent saves it for user selection.
+// Execute validates again when that draft becomes a new operation.
+func (s *Service) ValidateCommand(c expense.Command) error {
+	return c.Validate()
 }

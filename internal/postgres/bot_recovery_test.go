@@ -55,7 +55,7 @@ func checkBotRecovery(t *testing.T, s *postgres.Store) {
 	ctx := context.Background()
 	for n, kind := range []string{"update_expense", "delete_expense"} {
 		t.Run(kind, func(t *testing.T) {
-			e, err := s.Create(ctx, expense.Input{UserID: 101, Amount: 35000, Category: "еда", SpentAt: "2026-10-17", Comment: "recovery"})
+			e, err := expensesvc.New(s).Create(ctx, expense.Input{UserID: 101, Amount: 35000, Category: "еда", SpentAt: "2026-10-17", Comment: "recovery"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -219,7 +219,7 @@ func checkBaselineReopen(t *testing.T, s *postgres.Store, dsn string) {
         WHERE table_schema = current_schema() AND table_name = 'telegram_updates' AND column_name = 'state'`).Scan(&stateType); err != nil || stateType != "telegram_update_state" {
 		t.Fatalf("state was not upgraded to enum: %s %v", stateType, err)
 	}
-	page, err := upgraded.List(ctx, expense.Filter{UserID: 101})
+	page, err := expensesvc.New(upgraded).List(ctx, expense.Filter{UserID: 101})
 	if err != nil || page.Total != 1 || page.TotalAmount != 35000 || page.Items[0].Version != 1 {
 		t.Fatalf("upgrade lost expenses: %+v %v", page, err)
 	}

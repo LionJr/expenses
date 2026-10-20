@@ -48,7 +48,7 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 	ctx := context.Background()
 	create := func(amount int64) expense.Expense {
 		t.Helper()
-		e, err := s.Create(ctx, expense.Input{UserID: 101, Amount: amount, Category: "транспорт", SpentAt: "2026-10-17", Comment: "choice-chain"})
+		e, err := expensesvc.New(s).Create(ctx, expense.Input{UserID: 101, Amount: amount, Category: "транспорт", SpentAt: "2026-10-17", Comment: "choice-chain"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -98,7 +98,7 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 	if err := bot.Handle(ctx, privateUpdate(t, 9102, 101, "вторую")); err != nil {
 		t.Fatal(err)
 	}
-	page, err := s.List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
+	page, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
 	if err != nil || page.Total != 3 {
 		t.Fatal("undelivered list authorized deletion")
 	}
@@ -118,14 +118,14 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 	if err = bot.Handle(ctx, privateUpdate(t, 9103, 103, "вторую")); err != nil {
 		t.Fatal(err)
 	}
-	page, err = s.List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
+	page, err = expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
 	if err != nil || page.Total != 3 {
 		t.Fatal("queued pre-delivery reply authorized deletion")
 	}
 	if err = bot.Handle(ctx, privateUpdate(t, 9104, 110, "вторую")); err != nil {
 		t.Fatal(err)
 	}
-	page, err = s.List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
+	page, err = expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Search: "choice-chain"})
 	if err != nil || page.Total != 2 {
 		t.Fatal("post-delivery selection failed")
 	}

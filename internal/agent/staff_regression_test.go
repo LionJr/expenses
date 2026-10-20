@@ -229,3 +229,15 @@ func TestInvalidTextNeverReachesMutationOrPersistedHistory(t *testing.T) {
 		t.Fatal("unsafe incoming text persisted")
 	}
 }
+
+func TestInvalidEditCannotBecomePendingAction(t *testing.T) {
+	repo := &fakeRepo{page: expense.Page{Items: []expense.Expense{{ID: 14, UserID: 42}, {ID: 7, UserID: 42}}, Total: 2}}
+	llm := &script{responses: []Message{
+		call("list_expenses", `{"search":"такси"}`),
+		call("update_expense", `{"id":"14","category":"нет"}`),
+	}}
+	reply, session, err := newAgent(repo, llm).Reply(context.Background(), 42, 1, "измени категорию такси на нет", Session{})
+	if err != nil || session.Pending != nil || repo.mutations != 0 || repo.mutationAttempts != 0 || !strings.Contains(reply, "неизвестная категория") {
+		t.Fatalf("invalid edit staged: reply=%q session=%+v mutations=%d err=%v", reply, session, repo.mutations, err)
+	}
+}

@@ -12,7 +12,7 @@ import (
 )
 
 // Execute atomically journals the result alongside the change. Replays never apply it twice.
-func (s *Store) Execute(ctx context.Context, key string, owner int64, command expense.Command) (json.RawMessage, error) {
+func (s *Store) Execute(ctx context.Context, key string, owner int64, prepare func() (expense.Command, error)) (json.RawMessage, error) {
 	if owner <= 0 || !s.Allowed[owner] {
 		return nil, expense.ErrNotFound
 	}
@@ -32,10 +32,12 @@ func (s *Store) Execute(ctx context.Context, key string, owner int64, command ex
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	command.Input.UserID = owner
-	if err := command.Validate(); err != nil {
+	command, err := prepare()
+	if err != nil {
 		return nil, err
 	}
+	// Bind writes to the authenticated owner, independently of command data.
+	command.Input.UserID = owner
 	var result any
 	switch command.Operation {
 	case expense.Create:

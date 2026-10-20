@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"encoding/json"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
 )
 
 type fakeStore struct{ changed bool }
@@ -43,7 +45,7 @@ func TestValidationAndCrossOrigin(t *testing.T) {
 	} {
 		t.Run(test.method+test.path+test.body, func(t *testing.T) {
 			s := &fakeStore{}
-			handler := (&API{Store: s, Timezone: "Europe/Moscow"}).Handler()
+			handler := (&API{Store: expensesvc.New(s), Timezone: "Europe/Moscow"}).Handler()
 			r := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
 			r.Header.Set("Content-Type", "application/json")
 			r.Header.Set("Origin", test.origin)
@@ -74,11 +76,18 @@ func (s *deadlineStore) List(ctx context.Context, _ expense.Filter) (expense.Pag
 }
 func TestAPIDatabaseDeadline(t *testing.T) {
 	store := &deadlineStore{fakeStore: &fakeStore{}}
-	handler := (&API{Store: store, RequestTimeout: time.Millisecond}).Handler()
+	handler := (&API{Store: expensesvc.New(store), RequestTimeout: time.Millisecond}).Handler()
 	r := httptest.NewRequest("GET", "/api/expenses", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	if w.Code != 504 || !store.deadlineSeen || !strings.Contains(w.Body.String(), `"error"`) {
 		t.Fatalf("deadline not enforced: %d %s", w.Code, w.Body)
 	}
+}
+
+func (*fakeStore) Execute(context.Context, string, int64, func() (expense.Command, error)) (json.RawMessage, error) {
+	panic("unexpected journal operation")
+}
+func (*fakeStore) OperationResult(context.Context, string, int64) (json.RawMessage, error) {
+	panic("unexpected journal lookup")
 }

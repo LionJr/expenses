@@ -10,6 +10,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// Store persists expense input normalized and validated by expensesvc.
+// It owns transactions, owner checks and database constraints.
 type Store struct {
 	DB      *sql.DB
 	Allowed map[int64]bool

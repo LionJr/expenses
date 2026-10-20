@@ -13,6 +13,7 @@ import (
 	"github.com/LionJr/expenses/internal/agent"
 	"github.com/LionJr/expenses/internal/botstate"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
 )
 
 type choiceRepo struct {
@@ -26,7 +27,11 @@ func (*choiceRepo) OperationResult(context.Context, string, int64) (json.RawMess
 func (*choiceRepo) List(context.Context, expense.Filter) (expense.Page, error) {
 	return expense.Page{Items: []expense.Expense{{ID: 33, UserID: 42, Amount: 300}, {ID: 11, UserID: 42, Amount: 100}, {ID: 22, UserID: 42, Amount: 200}}, Total: 3}, nil
 }
-func (r *choiceRepo) Execute(_ context.Context, _ string, _ int64, command expense.Command) (json.RawMessage, error) {
+func (r *choiceRepo) Execute(_ context.Context, _ string, _ int64, prepare func() (expense.Command, error)) (json.RawMessage, error) {
+	command, err := prepare()
+	if err != nil {
+		return nil, err
+	}
 	kind, id := string(command.Operation), command.ID
 	r.mutations++
 	r.deleted = id
@@ -91,7 +96,7 @@ func TestChoiceWaitsForDeliveryAndRejectsEarlierQueuedReply(t *testing.T) {
 		fmt.Fprint(w, `{"ok":true,"result":{"message_id":106}}`)
 	}))
 	defer server.Close()
-	responder := &agent.Agent{Store: repo, LLM: provider, Timeout: time.Second, Location: time.UTC}
+	responder := &agent.Agent{Store: expensesvc.New(repo), LLM: provider, Timeout: time.Second, Location: time.UTC}
 	bot := Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{42: true}, Store: store, Agent: responder}
 	if err := bot.Handle(context.Background(), choiceUpdate(t, 10, 100, "удали такси")); err != nil {
 		t.Fatal(err)
@@ -142,7 +147,7 @@ func TestNewRequestSupersedesOldChoicePrompt(t *testing.T) {
 		fmt.Fprint(w, `{"ok":true,"result":{"message_id":105}}`)
 	}))
 	defer server.Close()
-	bot := Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{42: true}, Store: store, Agent: &agent.Agent{Store: repo, LLM: provider, Timeout: time.Second, Location: time.UTC}}
+	bot := Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{42: true}, Store: store, Agent: &agent.Agent{Store: expensesvc.New(repo), LLM: provider, Timeout: time.Second, Location: time.UTC}}
 	if err := bot.Handle(context.Background(), choiceUpdate(t, 10, 100, "удали такси")); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +175,7 @@ func TestMissingPromptMessageIDCannotActivateChoice(t *testing.T) {
 	provider := &choiceProvider{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"ok":true,"result":{}}`) }))
 	defer server.Close()
-	bot := Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{42: true}, Store: store, Agent: &agent.Agent{Store: repo, LLM: provider, Timeout: time.Second, Location: time.UTC}}
+	bot := Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: map[int64]bool{42: true}, Store: store, Agent: &agent.Agent{Store: expensesvc.New(repo), LLM: provider, Timeout: time.Second, Location: time.UTC}}
 	if err := bot.Handle(context.Background(), choiceUpdate(t, 10, 100, "удали такси")); err != nil {
 		t.Fatal(err)
 	}
@@ -194,3 +199,12 @@ func TestMissingPromptMessageIDCannotActivateChoice(t *testing.T) {
 	}
 
 }
+
+func (*choiceRepo) Users(context.Context) ([]expense.User, error) { panic("unexpected users query") }
+func (*choiceRepo) Create(context.Context, expense.Input) (expense.Expense, error) {
+	panic("unexpected panel create")
+}
+func (*choiceRepo) Update(context.Context, int64, int64, expense.Patch) (expense.Expense, error) {
+	panic("unexpected panel update")
+}
+func (*choiceRepo) Delete(context.Context, int64, int64) error { panic("unexpected panel delete") }

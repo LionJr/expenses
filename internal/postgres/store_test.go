@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/LionJr/expenses/internal/expense"
@@ -19,6 +20,19 @@ import (
 	"github.com/LionJr/expenses/internal/httpapi"
 	"github.com/LionJr/expenses/internal/postgres"
 )
+
+// Count preparations inside the real journal transaction, not service calls.
+type countedPreparations struct {
+	*postgres.Store
+	calls atomic.Int64
+}
+
+func (s *countedPreparations) Execute(ctx context.Context, key string, owner int64, prepare func() (expense.Command, error)) (json.RawMessage, error) {
+	return s.Store.Execute(ctx, key, owner, func() (expense.Command, error) {
+		s.calls.Add(1)
+		return prepare()
+	})
+}
 
 func TestPostgresIntegration(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -60,7 +74,7 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 	create := func(user, amount int64, date, comment string) expense.Expense {
 		t.Helper()
-		v, e := s.Create(ctx, expense.Input{UserID: user, Amount: amount, Category: "еда", SpentAt: date, Comment: comment})
+		v, e := expensesvc.New(s).Create(ctx, expense.Input{UserID: user, Amount: amount, Category: "еда", SpentAt: date, Comment: comment})
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -70,58 +84,60 @@ func TestPostgresIntegration(t *testing.T) {
 	other := create(202, 50000, "2026-10-17", "обед")
 	last := create(101, 120000, "2026-09-01", "такси")
 	t.Run("owner isolation", func(t *testing.T) {
-		own, err := s.List(ctx, expense.Filter{UserID: 101, ID: first.ID, Limit: 1})
+		own, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: first.ID, Limit: 1})
 		if err != nil || own.Total != 1 || len(own.Items) != 1 || own.Items[0].ID != first.ID {
 			t.Fatalf("own ID lookup: %+v %v", own, err)
 		}
-		foreign, err := s.List(ctx, expense.Filter{UserID: 101, ID: other.ID, Limit: 1})
+		foreign, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: other.ID, Limit: 1})
 		if err != nil || foreign.Total != 0 || len(foreign.Items) != 0 || foreign.TotalAmount != 0 {
 			t.Fatalf("foreign ID lookup: %+v %v", foreign, err)
 		}
-		p, e := s.List(ctx, expense.Filter{UserID: 101})
+		p, e := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101})
 		if e != nil || p.Total != 2 || p.TotalAmount != 155000 {
 			t.Fatalf("page: %+v %v", p, e)
 		}
 		n := int64(1)
-		if _, e = s.Update(ctx, 101, other.ID, expense.Patch{Amount: &n}); !errors.Is(e, expense.ErrNotFound) {
+		if _, e = expensesvc.New(s).Update(ctx, 101, other.ID, expense.Patch{Amount: &n}); !errors.Is(e, expense.ErrNotFound) {
 			t.Fatalf("foreign update: %v", e)
 		}
-		if e = s.Delete(ctx, 101, other.ID); !errors.Is(e, expense.ErrNotFound) {
+		if e = expensesvc.New(s).Delete(ctx, 101, other.ID); !errors.Is(e, expense.ErrNotFound) {
 			t.Fatalf("foreign delete: %v", e)
 		}
 	})
 	t.Run("filter pagination aggregate latest", func(t *testing.T) {
-		p, e := s.List(ctx, expense.Filter{UserID: 101, Limit: 1})
+		p, e := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Limit: 1})
 		if e != nil || len(p.Items) != 1 || p.TotalAmount != 155000 {
 			t.Fatalf("aggregate: %+v %v", p, e)
 		}
-		p, e = s.List(ctx, expense.Filter{UserID: 101, Limit: 1, Latest: true})
+		p, e = expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, Limit: 1, Latest: true})
 		if e != nil || p.Items[0].ID != last.ID {
 			t.Fatalf("latest: %+v %v", p, e)
 		}
-		p, e = s.List(ctx, expense.Filter{From: "2026-10-17", To: "2026-10-17", Category: "еда", Search: "кофе"})
+		p, e = expensesvc.New(s).List(ctx, expense.Filter{From: "2026-10-17", To: "2026-10-17", Category: "еда", Search: "кофе"})
 		if e != nil || p.TotalAmount != 35000 || p.Total != 1 {
 			t.Fatalf("filters: %+v %v", p, e)
 		}
-		p, e = s.List(ctx, expense.Filter{Offset: 100})
+		p, e = expensesvc.New(s).List(ctx, expense.Filter{Offset: 100})
 		if e != nil || p.Total != 3 || len(p.Items) != 0 || p.TotalAmount != 205000 {
 			t.Fatalf("empty page: %+v %v", p, e)
 		}
 	})
 	t.Run("patch clear comment timestamps", func(t *testing.T) {
 		empty := ""
-		v, e := s.Update(ctx, 101, first.ID, expense.Patch{Comment: &empty})
+		v, e := expensesvc.New(s).Update(ctx, 101, first.ID, expense.Patch{Comment: &empty})
 		if e != nil || v.Comment != "" || v.Amount != 35000 || v.UpdatedAt.Before(first.UpdatedAt) {
 			t.Fatalf("patch: %+v %v", v, e)
 		}
 	})
 	t.Run("stale expected amount blocks concurrent update", func(t *testing.T) {
 		stale, amount := int64(1), int64(999)
-		if _, e := s.Update(ctx, 101, first.ID, expense.Patch{Amount: &amount, ExpectedAmount: &stale}); !errors.Is(e, expense.ErrNotFound) {
+		if _, e := expensesvc.New(s).Update(ctx, 101, first.ID, expense.Patch{Amount: &amount, ExpectedAmount: &stale}); !errors.Is(e, expense.ErrNotFound) {
 			t.Fatalf("stale update accepted: %v", e)
 		}
 	})
 	t.Run("atomic concurrent operation replay", func(t *testing.T) {
+		counted := &countedPreparations{Store: s}
+		service := expensesvc.New(counted)
 		var wg sync.WaitGroup
 		results := make(chan string, 6)
 		errs := make(chan error, 6)
@@ -129,7 +145,7 @@ func TestPostgresIntegration(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				v, e := s.Execute(ctx, "replay", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: 123, Category: "другое", SpentAt: "2026-10-17"}})
+				v, e := service.Execute(ctx, "replay", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: 123, Category: "другое", SpentAt: "2026-10-17"}})
 				results <- string(v)
 				errs <- e
 			}()
@@ -156,16 +172,19 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 		// Recovery must win over new-command validation, including through the
 		// shared service: the operation may already have committed before a crash.
-		replayed, replayErr := expensesvc.New(s).Execute(ctx, "replay", 101, expense.Command{})
+		replayed, replayErr := service.Execute(ctx, "replay", 101, expense.Command{})
 		var recovered map[string]any
 		if replayErr != nil || json.Unmarshal(replayed, &recovered) != nil || recovered["id"] != id || recovered["operation"] != "create_expense" {
 			t.Fatalf("committed operation was revalidated: %s %v", replayed, replayErr)
 		}
-		p, e := s.List(ctx, expense.Filter{UserID: 101})
+		if counted.calls.Load() != 1 {
+			t.Fatalf("command prepared %d times for one operation", counted.calls.Load())
+		}
+		p, e := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101})
 		if e != nil || p.Total != 3 {
 			t.Fatalf("duplicate creation: %+v %v", p, e)
 		}
-		if _, e = s.Execute(ctx, "invalid", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: -1}}); e == nil {
+		if _, e = expensesvc.New(s).Execute(ctx, "invalid", 101, expense.Command{Operation: expense.Create, Input: expense.Input{Amount: -1}}); e == nil {
 			t.Fatal("invalid operation committed")
 		}
 		var count int
@@ -246,10 +265,10 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 	t.Run("report overflow", func(t *testing.T) {
 		huge := create(202, math.MaxInt64, "2026-10-17", "huge")
-		if _, e = s.List(ctx, expense.Filter{}); !errors.Is(e, expense.ErrInvalid) {
+		if _, e = expensesvc.New(s).List(ctx, expense.Filter{}); !errors.Is(e, expense.ErrInvalid) {
 			t.Fatalf("overflow: %v", e)
 		}
-		if e = s.Delete(ctx, 0, huge.ID); e != nil {
+		if e = expensesvc.New(s).Delete(ctx, 0, huge.ID); e != nil {
 			t.Fatal(e)
 		}
 	})
@@ -259,7 +278,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatal(e)
 		}
 		defer restart.DB.Close()
-		p, e := restart.List(ctx, expense.Filter{UserID: 101})
+		p, e := expensesvc.New(restart).List(ctx, expense.Filter{UserID: 101})
 		if e != nil || p.Total < 3 {
 			t.Fatal("data lost on reopen")
 		}

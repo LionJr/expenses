@@ -86,7 +86,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 	}
 	defer func() {
 		for _, e := range created {
-			if err := s.Delete(context.Background(), 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
+			if err := expensesvc.New(s).Delete(context.Background(), 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
 				t.Error(err)
 			}
 		}
@@ -120,7 +120,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 	}
 	request("PATCH", path, `{"comment":"forbidden"}`, "https://other.example", 403)
 	// A failed request must not partially change any field.
-	page, err := s.List(context.Background(), expense.Filter{ID: created[0].ID, UserID: 101})
+	page, err := expensesvc.New(s).List(context.Background(), expense.Filter{ID: created[0].ID, UserID: 101})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Amount != 12345 || page.Items[0].Comment != "http-acceptance" {
 		t.Fatalf("invalid request changed row: %+v %v", page, err)
 	}
@@ -151,7 +151,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	ctx := context.Background()
 	var records []expense.Expense
 	for _, user := range []int64{101, 101, 202} {
-		e, err := s.Create(ctx, expense.Input{UserID: user, Amount: 12345, Category: "транспорт", SpentAt: "2040-02-29", Comment: "бассейн"})
+		e, err := expensesvc.New(s).Create(ctx, expense.Input{UserID: user, Amount: 12345, Category: "транспорт", SpentAt: "2040-02-29", Comment: "бассейн"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +159,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	}
 	defer func() {
 		for _, e := range records {
-			if err := s.Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
+			if err := expensesvc.New(s).Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
 				t.Error(err)
 			}
 		}
@@ -218,15 +218,15 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	}
 	// An administrative comment edit must survive the bot's amount-only patch.
 	comment := "бассейн изменено в панели"
-	if _, err := s.Update(ctx, 0, target, expense.Patch{Comment: &comment}); err != nil {
+	if _, err := expensesvc.New(s).Update(ctx, 0, target, expense.Patch{Comment: &comment}); err != nil {
 		t.Fatal(err)
 	}
 	send("2")
-	page, err := s.List(ctx, expense.Filter{ID: target, UserID: 101})
+	page, err := expensesvc.New(s).List(ctx, expense.Filter{ID: target, UserID: 101})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Amount != 55550 || page.Items[0].Comment != comment {
 		t.Fatalf("wrong update or lost concurrent comment: %+v %v", page, err)
 	}
-	foreign, err := s.List(ctx, expense.Filter{ID: records[2].ID, UserID: 202})
+	foreign, err := expensesvc.New(s).List(ctx, expense.Filter{ID: records[2].ID, UserID: 202})
 	if err != nil || len(foreign.Items) != 1 || foreign.Items[0].Amount != 12345 {
 		t.Fatalf("foreign expense changed: %+v %v", foreign, err)
 	}
@@ -241,7 +241,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	send("удали бассейн")
 	send("Отмена!")
 	send("1")
-	page, err = s.List(ctx, expense.Filter{UserID: 101, ID: target})
+	page, err = expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: target})
 	if err != nil || page.Total != 1 {
 		t.Fatal("canceled choice deleted an expense")
 	}
@@ -253,14 +253,14 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 		t.Fatalf("expected two candidates before stale-row test: %+v", session)
 	}
 	removed, remaining := session.Candidates[0].ID, session.Candidates[1].ID
-	if err := s.Delete(ctx, 0, removed); err != nil {
+	if err := expensesvc.New(s).Delete(ctx, 0, removed); err != nil {
 		t.Fatal(err)
 	}
 	send("1")
 	if !strings.Contains(replies[len(replies)-1], "Не удалось подтвердить изменение") {
 		t.Fatalf("missing stale-row error: %s", replies[len(replies)-1])
 	}
-	page, err = s.List(ctx, expense.Filter{UserID: 101, ID: remaining})
+	page, err = expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: remaining})
 	if err != nil || page.Total != 1 || loadChoiceSession(t, s).Pending != nil {
 		t.Fatal("stale selection changed another row or remained active")
 	}
@@ -278,7 +278,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 		{UserID: 101, Amount: 30000, Category: "еда", SpentAt: "2043-09-30", Comment: "trust-outside"},
 		{UserID: 202, Amount: 40000, Category: "еда", SpentAt: "2043-10-15", Comment: "trust-foreign"},
 	} {
-		e, err := s.Create(ctx, input)
+		e, err := expensesvc.New(s).Create(ctx, input)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -286,7 +286,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	}
 	t.Cleanup(func() {
 		for _, e := range records {
-			if err := s.Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
+			if err := expensesvc.New(s).Delete(ctx, 0, e.ID); err != nil && !errors.Is(err, expense.ErrNotFound) {
 				t.Error(err)
 			}
 		}
@@ -316,7 +316,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 		}
 		return replies[len(replies)-1]
 	}
-	before, err := s.List(ctx, expense.Filter{UserID: 101})
+	before, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	if reply := send("кофе 350"); strings.Contains(reply, "99999") || strings.Contains(reply, "Добавил") {
 		t.Fatal("unbacked create shown: " + reply)
 	}
-	after, err := s.List(ctx, expense.Filter{UserID: 101})
+	after, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101})
 	if err != nil || after.Total != before.Total || after.TotalAmount != before.TotalAmount {
 		t.Fatal("unbacked create changed DB")
 	}
@@ -363,7 +363,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 		t.Fatal("read selection reached LLM or lost list")
 	}
 	for _, e := range records {
-		page, err := s.List(ctx, expense.Filter{UserID: e.UserID, ID: e.ID})
+		page, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: e.UserID, ID: e.ID})
 		if err != nil || page.Total != 1 || page.Items[0].Amount != e.Amount {
 			t.Fatalf("read selection changed row %d", e.ID)
 		}
@@ -373,7 +373,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	if reply := send(fmt.Sprintf("удали расход #%d", records[0].ID)); !strings.Contains(reply, "расход удалён") {
 		t.Fatal(reply)
 	}
-	page, err := s.List(ctx, expense.Filter{UserID: 101, ID: records[0].ID})
+	page, err := expensesvc.New(s).List(ctx, expense.Filter{UserID: 101, ID: records[0].ID})
 	if err != nil || page.Total != 0 {
 		t.Fatal("explicit delete did not work")
 	}

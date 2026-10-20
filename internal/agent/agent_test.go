@@ -13,10 +13,11 @@ import (
 
 	"github.com/LionJr/expenses/internal/botstate"
 	"github.com/LionJr/expenses/internal/expense"
+	"github.com/LionJr/expenses/internal/expensesvc"
 	"github.com/LionJr/expenses/internal/expensewire"
 )
 
-// fakeRepo records the agent/storage boundary and returns supplied search results.
+// fakeRepo records the service/storage boundary and returns supplied search results.
 // It does not implement SQL filtering or durable idempotency; those contracts
 // are exercised against real PostgreSQL in internal/postgres integration tests.
 type fakeRepo struct {
@@ -47,7 +48,11 @@ func (f *fakeRepo) List(_ context.Context, filter expense.Filter) (expense.Page,
 	f.owner = filter.UserID
 	return f.page, f.listError
 }
-func (f *fakeRepo) Execute(_ context.Context, key string, owner int64, command expense.Command) (json.RawMessage, error) {
+func (f *fakeRepo) Execute(_ context.Context, key string, owner int64, prepare func() (expense.Command, error)) (json.RawMessage, error) {
+	command, err := prepare()
+	if err != nil {
+		return nil, err
+	}
 	name, id, i, p := string(command.Operation), command.ID, command.Input, command.Patch
 	f.mutationAttempts++
 	if f.mutationError != nil {
@@ -117,7 +122,7 @@ func call(name, args string) Message {
 	return Message{Role: "assistant", ToolCalls: []ToolCall{{ID: "call1", Type: "function", Function: Function{Name: name, Arguments: args}}}}
 }
 func newAgent(f *fakeRepo, s *script) *Agent {
-	return &Agent{Store: f, LLM: s, Location: time.FixedZone("UTC+3", 3*3600), Timeout: time.Second, Now: func() time.Time { return time.Date(2026, 10, 16, 22, 30, 0, 0, time.UTC) }}
+	return &Agent{Store: expensesvc.New(f), LLM: s, Location: time.FixedZone("UTC+3", 3*3600), Timeout: time.Second, Now: func() time.Time { return time.Date(2026, 10, 16, 22, 30, 0, 0, time.UTC) }}
 }
 func TestCreateAndDateContext(t *testing.T) {
 	f := &fakeRepo{}
@@ -453,3 +458,12 @@ func TestLatestCorrectionMismatchIsDeterministic(t *testing.T) {
 func (a *Agent) execute(ctx context.Context, user, update int64, call ToolCall, text string, s *Session, selected int64, mutated *bool) (json.RawMessage, error) {
 	return a.executeAuthorized(ctx, user, update, call, text, s, selected, mutated, permissionsFor(text))
 }
+
+func (*fakeRepo) Users(context.Context) ([]expense.User, error) { panic("unexpected users query") }
+func (*fakeRepo) Create(context.Context, expense.Input) (expense.Expense, error) {
+	panic("unexpected panel create")
+}
+func (*fakeRepo) Update(context.Context, int64, int64, expense.Patch) (expense.Expense, error) {
+	panic("unexpected panel update")
+}
+func (*fakeRepo) Delete(context.Context, int64, int64) error { panic("unexpected panel delete") }
