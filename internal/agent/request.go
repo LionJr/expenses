@@ -56,12 +56,12 @@ func prepareRequest(text string, s Session) preparedRequest {
 					return preparedRequest{session: s, answer: answer, handled: true}
 				}
 				if permission.Mutation == "" && !permission.ReadOnly && simpleDescription.MatchString(draft.Text) {
-					permission = requestPermissions{Mutation: "create_expense"}
+					permission = requestPermissions{Mutation: toolCreateExpense}
 				}
 				switch permission.Mutation {
-				case "create_expense":
+				case toolCreateExpense:
 					text = draft.Text + " " + value
-				case "update_expense":
+				case toolUpdateExpense:
 					text = draft.Text + " на " + value
 				default:
 					text = draft.Text + "\nУточнение суммы: " + value

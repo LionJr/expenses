@@ -2,6 +2,16 @@ package agent
 
 import "github.com/LionJr/expenses/internal/expense"
 
+const (
+	toolClarifyRequest    = "clarify_request"
+	toolListExpenses      = "list_expenses"
+	toolSummarizeExpenses = "summarize_expenses"
+
+	toolCreateExpense = "create_expense"
+	toolUpdateExpense = "update_expense"
+	toolDeleteExpense = "delete_expense"
+)
+
 func tool(name, description string, properties map[string]any, required ...string) Tool {
 	if required == nil {
 		required = []string{}
@@ -27,11 +37,11 @@ func Tools() []Tool {
 	patch["id"] = str("ID из результата поиска")
 	patch["expected_amount_rubles"] = str("Прежняя сумма, если пользователь её упомянул; проверяется до изменения")
 	return []Tool{
-		tool("clarify_request", "Если для операции недостаточно данных или запрос непонятен, запросить уточнение. Приложение сформирует вопрос; не отвечай обычным текстом.", map[string]any{"field": map[string]any{"type": "string", "enum": []string{"amount", "date", "category", "comment", "expense", "single_expense", "request"}}}, "field"),
-		tool("create_expense", "Создать один расход текущего пользователя", fields(), "amount_rubles", "category", "spent_at"),
-		tool("list_expenses", "Показать список собственных расходов: «покажи траты за неделю», «покажи расходы на здоровье за этот месяц». Перед изменением или удалением обязателен поиск. При нескольких совпадениях уточнить выбор.", list),
-		tool("summarize_expenses", "Точная сумма расходов за период и категорию для вопросов «сколько потратил». Для просьбы показать расходы используй list_expenses.", filters()),
-		tool("update_expense", "Запросить изменение найденного расхода, в том числе при нескольких совпадениях: приложение само запросит выбор. При упоминании старой суммы передать expected_amount_rubles", patch, "id"),
-		tool("delete_expense", "Запросить удаление найденного собственного расхода. При нескольких совпадениях приложение сохранит запрос и покажет список для выбора", map[string]any{"id": str("ID из поиска")}, "id"),
+		tool(toolClarifyRequest, "Если для операции недостаточно данных или запрос непонятен, запросить уточнение. Приложение сформирует вопрос; не отвечай обычным текстом.", map[string]any{"field": map[string]any{"type": "string", "enum": []string{"amount", "date", "category", "comment", "expense", "single_expense", "request"}}}, "field"),
+		tool(toolCreateExpense, "Создать один расход текущего пользователя", fields(), "amount_rubles", "category", "spent_at"),
+		tool(toolListExpenses, "Показать список собственных расходов: «покажи траты за неделю», «покажи расходы на здоровье за этот месяц». Перед изменением или удалением обязателен поиск. При нескольких совпадениях уточнить выбор.", list),
+		tool(toolSummarizeExpenses, "Точная сумма расходов за период и категорию для вопросов «сколько потратил». Для просьбы показать расходы используй list_expenses.", filters()),
+		tool(toolUpdateExpense, "Запросить изменение найденного расхода, в том числе при нескольких совпадениях: приложение само запросит выбор. При упоминании старой суммы передать expected_amount_rubles", patch, "id"),
+		tool(toolDeleteExpense, "Запросить удаление найденного собственного расхода. При нескольких совпадениях приложение сохранит запрос и покажет список для выбора", map[string]any{"id": str("ID из поиска")}, "id"),
 	}
 }

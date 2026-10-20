@@ -36,7 +36,7 @@ func (a *API) Handler() http.Handler {
 	t, templateErr := template.ParseFS(web.Files, "templates/index.html")
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(http.MethodGet+" /{$}", func(w http.ResponseWriter, r *http.Request) {
 		if templateErr != nil {
 			a.fail(w, templateErr)
 			return
@@ -48,13 +48,13 @@ func (a *API) Handler() http.Handler {
 	})
 	// For embed.FS, Sub only checks path syntax; the fixed "static" path is valid.
 	assets, _ := fs.Sub(web.Files, "static")
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
+	mux.Handle(http.MethodGet+" /static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
 
-	mux.HandleFunc("GET /api/users", a.users)
-	mux.HandleFunc("GET /api/expenses", a.list)
-	mux.HandleFunc("POST /api/expenses", a.create)
-	mux.HandleFunc("PATCH /api/expenses/{id}", a.patch)
-	mux.HandleFunc("DELETE /api/expenses/{id}", a.delete)
+	mux.HandleFunc(http.MethodGet+" /api/users", a.users)
+	mux.HandleFunc(http.MethodGet+" /api/expenses", a.list)
+	mux.HandleFunc(http.MethodPost+" /api/expenses", a.create)
+	mux.HandleFunc(http.MethodPatch+" /api/expenses/{id}", a.patch)
+	mux.HandleFunc(http.MethodDelete+" /api/expenses/{id}", a.delete)
 
 	handler := withSameOrigin(mux)
 	handler = withAPITimeout(handler, a.RequestTimeout)

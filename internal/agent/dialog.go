@@ -108,34 +108,29 @@ func previousAmount(text string) (string, bool) {
 	return token, true
 }
 
-var previousAmountClause = regexp.MustCompile(`(?i)(?:^|[^\p{L}])не\s+(.+?)(?:,\s*|\s+)а\s+`)
-var amountCurrency = regexp.MustCompile(`(?i)\s*(?:₽|руб(?:лей|ля|ль)?\.?)$`)
+const (
+	latestObject  = `(?:последний расход|последнюю трату|последняя трата|последнюю поездку|последнее такси|последнее|последнюю|последний|самый новый расход|самую новую трату|самую новую поездку)`
+	decimalAmount = `[0-9]+(?:[.,][0-9]{1,2})?`
+)
 
-// Only whole, unqualified requests authorize the latest shortcut. Arbitrary
-// mentions of "last" (including exclusions and negation) must not grant it.
-const latestObject = `(?:последний расход|последнюю трату|последняя трата|последнюю поездку|последнее такси|последнее|последнюю|последний|самый новый расход|самую новую трату|самую новую поездку)`
-const decimalAmount = `[0-9]+(?:[.,][0-9]{1,2})?`
+var (
+	previousAmountClause = regexp.MustCompile(`(?i)(?:^|[^\p{L}])не\s+(.+?)(?:,\s*|\s+)а\s+`)
+	amountCurrency       = regexp.MustCompile(`(?i)\s*(?:₽|руб(?:лей|ля|ль)?\.?)$`)
 
-var latestRequest = regexp.MustCompile(`^(?:(?:пожалуйста,? )?(?:удали|удалить|убери|покажи|найди) )?` + latestObject + `(?:,? пожалуйста)?$`)
-var latestCorrection = regexp.MustCompile(`^(?:последнее было|последняя трата была|последний расход был) не ` + decimalAmount + `,? а ` + decimalAmount + `$`)
-var latestAmountChange = regexp.MustCompile(`^(?:измени|исправь) ` + latestObject + ` на ` + decimalAmount + `$`)
+	// Only whole, unqualified requests authorize the latest shortcut. Arbitrary
+	// mentions of "last" (including exclusions and negation) must not grant it.
+	latestRequest      = regexp.MustCompile(`^(?:(?:пожалуйста,? )?(?:удали|удалить|убери|покажи|найди) )?` + latestObject + `(?:,? пожалуйста)?$`)
+	latestCorrection   = regexp.MustCompile(`^(?:последнее было|последняя трата была|последний расход был) не ` + decimalAmount + `,? а ` + decimalAmount + `$`)
+	latestAmountChange = regexp.MustCompile(`^(?:измени|исправь) ` + latestObject + ` на ` + decimalAmount + `$`)
+	selectionWord      = regexp.MustCompile(`(?i)^(?:[0-9]+|первую|первый|вторую|второй|третью|третий|четв[её]ртую|пятую|шестую|седьмую|восьмую|девятую|десятую|#\d+|id \d+)$`)
 
-func latestRequested(text string) bool {
-	normalized := strings.Join(strings.Fields(strings.ToLower(strings.Trim(strings.TrimSpace(text), ".!?"))), " ")
-	return latestRequest.MatchString(normalized) || latestCorrection.MatchString(normalized) || latestAmountChange.MatchString(normalized)
-}
-func prepareChoice(s *Session, update int64) {
-	s.Choice = &botstate.Choice{UpdateID: update, State: botstate.AwaitingDelivery}
-}
-
-var selectionWord = regexp.MustCompile(`(?i)^(?:[0-9]+|первую|первый|вторую|второй|третью|третий|четв[её]ртую|пятую|шестую|седьмую|восьмую|девятую|десятую|#\d+|id \d+)$`)
-
-// Only an unqualified, single-word search target is handled without a model.
-var simpleDelete = regexp.MustCompile(`(?i)^\s*(?:удали|удалить|убери)\s+([\p{L}]{3,})[.!?]?\s*$`)
-var simpleUpdate = regexp.MustCompile(`(?i)^\s*(?:измени|изменить|исправь)\s+([\p{L}]{3,})(?:\s+на\s+([0-9]+(?:[.,][0-9]+)?))?[.!?]?\s*$`)
-var simpleList = regexp.MustCompile(`(?i)^\s*(?:покажи|показать|покажите)\s+(?:мои\s+)?(?:расходы|траты)\s+(?:за|на)\s+([\p{L}]{3,})[.!?]?\s*$`)
-var amountReply = regexp.MustCompile(`^[-−]?[0-9]+(?:[.,][0-9]+)?$`)
-var explicitProhibition = regexp.MustCompile(`(?i)^\s*(?:пожалуйста,?\s+)?не\s+(?:удаляй|удалять|меняй|изменяй|изменять|трогай)\s+[\p{L}0-9# -]+[.!?]?\s*$`)
+	// Only an unqualified, single-word search target is handled without a model.
+	simpleDelete        = regexp.MustCompile(`(?i)^\s*(?:удали|удалить|убери)\s+([\p{L}]{3,})[.!?]?\s*$`)
+	simpleUpdate        = regexp.MustCompile(`(?i)^\s*(?:измени|изменить|исправь)\s+([\p{L}]{3,})(?:\s+на\s+([0-9]+(?:[.,][0-9]+)?))?[.!?]?\s*$`)
+	simpleList          = regexp.MustCompile(`(?i)^\s*(?:покажи|показать|покажите)\s+(?:мои\s+)?(?:расходы|траты)\s+(?:за|на)\s+([\p{L}]{3,})[.!?]?\s*$`)
+	amountReply         = regexp.MustCompile(`^[-−]?[0-9]+(?:[.,][0-9]+)?$`)
+	explicitProhibition = regexp.MustCompile(`(?i)^\s*(?:пожалуйста,?\s+)?не\s+(?:удаляй|удалять|меняй|изменяй|изменять|трогай)\s+[\p{L}0-9# -]+[.!?]?\s*$`)
+)
 
 // Only known expense targets can bypass interpretation. An arbitrary word after
 // "за" may be a period (e.g. "октябрь"), not a comment substring.
@@ -150,7 +145,6 @@ func simpleListSearch(text string) string {
 	}
 	return ""
 }
-
 func clarification(field string) (string, error) {
 	switch field {
 	case "amount":
@@ -171,7 +165,6 @@ func clarification(field string) (string, error) {
 		return "", expense.Invalid("неизвестное поле уточнения")
 	}
 }
-
 func simpleDeleteSearch(text string) string {
 	m := simpleDelete.FindStringSubmatch(text)
 	if len(m) == 0 || latestRequested(text) {
@@ -191,14 +184,13 @@ func simpleDeleteSearch(text string) string {
 	}
 	return ""
 }
-
 func selectionReply(text string) bool {
 	return selectionWord.MatchString(strings.Trim(strings.TrimSpace(text), ".!?"))
 }
 func choicePrompt(s Session) string {
 	var b strings.Builder
 	if s.Pending != nil {
-		if s.Pending.Kind == "delete_expense" {
+		if s.Pending.Kind == toolDeleteExpense {
 			b.WriteString("Какой расход удалить?\n")
 		} else {
 			b.WriteString("Какой расход изменить?\n")
@@ -219,6 +211,13 @@ func choicePrompt(s Session) string {
 		b.WriteString("Показана часть расходов. Можно уточнить поиск новым сообщением.")
 	}
 	return strings.TrimSpace(b.String())
+}
+func latestRequested(text string) bool {
+	normalized := strings.Join(strings.Fields(strings.ToLower(strings.Trim(strings.TrimSpace(text), ".!?"))), " ")
+	return latestRequest.MatchString(normalized) || latestCorrection.MatchString(normalized) || latestAmountChange.MatchString(normalized)
+}
+func prepareChoice(s *Session, update int64) {
+	s.Choice = &botstate.Choice{UpdateID: update, State: botstate.AwaitingDelivery}
 }
 
 // IsSelectionReply lets the transport reject choices sent before their prompt.

@@ -30,7 +30,7 @@ func withAPITimeout(next http.Handler, timeout time.Duration) http.Handler {
 
 func withSameOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" && r.Method != "HEAD" {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
 				write(w, http.StatusForbidden, map[string]any{"error": map[string]string{"message": "запрос с другого сайта запрещён"}})
 				return

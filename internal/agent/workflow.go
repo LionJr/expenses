@@ -12,7 +12,7 @@ import (
 )
 
 func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text string, s Session, permission requestPermissions, started time.Time) (preparedRequest, error) {
-	if token, ok := previousAmount(text); ok && permission.Mutation == "update_expense" {
+	if token, ok := previousAmount(text); ok && permission.Mutation == toolUpdateExpense {
 		if _, err := expense.ParseRubles(token); err != nil {
 			clearSelection(&s)
 			answer := "Прежняя сумма должна быть положительной и содержать не более двух знаков после запятой. Ничего не изменено."
@@ -33,7 +33,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		if parseErr == nil {
 			page, lookupErr := a.Store.List(ctx, expense.Filter{UserID: user, Latest: true, Limit: 1})
 			if lookupErr != nil {
-				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: "list_expenses", cause: lookupErr}
+				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: toolListExpenses, cause: lookupErr}
 			}
 			if len(page.Items) == 0 || page.Items[0].Amount != expected {
 				clearSelection(&s)
@@ -53,7 +53,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 			var lookupErr error
 			page, lookupErr = a.Store.List(ctx, expense.Filter{ID: id, UserID: user, Limit: 1})
 			if lookupErr != nil {
-				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: "list_expenses", cause: lookupErr}
+				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: toolListExpenses, cause: lookupErr}
 			}
 		}
 		if len(page.Items) == 0 {
@@ -70,7 +70,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		if parseErr == nil {
 			page, lookupErr := a.Store.List(ctx, expense.Filter{ID: id, UserID: user, Limit: 1})
 			if lookupErr != nil {
-				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: "list_expenses", cause: lookupErr}
+				return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: toolListExpenses, cause: lookupErr}
 			}
 			if len(page.Items) > 0 {
 				s.Candidates, s.CandidateTotal = page.Items, page.Total
@@ -142,7 +142,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 	if target := simpleListSearch(text); target != "" {
 		page, err := a.Store.List(ctx, expense.Filter{UserID: user, Search: target, Limit: 10})
 		if err != nil {
-			return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: "list_expenses", cause: err}
+			return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: toolListExpenses, cause: err}
 		}
 		s.Candidates, s.CandidateTotal = page.Items, page.Total
 		answer := "По заданным фильтрам расходов не найдено."
@@ -154,7 +154,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		return preparedRequest{session: s, answer: answer, handled: true}, nil
 	}
 	search := simpleDeleteSearch(text)
-	kind := "delete_expense"
+	kind := toolDeleteExpense
 	patch := expense.Patch{}
 	if match := simpleUpdate.FindStringSubmatch(text); len(match) > 0 && !latestRequested(text) {
 		// Reuse the conservative single-target validation used by deletion.
@@ -171,13 +171,13 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 				remember(&s, text, answer)
 				return preparedRequest{session: s, answer: answer, handled: true}, nil
 			}
-			search, kind, patch.Amount = target, "update_expense", &amount
+			search, kind, patch.Amount = target, toolUpdateExpense, &amount
 		}
 	}
 	if search != "" {
 		page, err := a.Store.List(ctx, expense.Filter{UserID: user, Search: search, Limit: 10})
 		if err != nil {
-			return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: "list_expenses", cause: err}
+			return preparedRequest{session: s, handled: true}, &ProcessingError{Operation: toolListExpenses, cause: err}
 		}
 		s.Candidates, s.CandidateTotal = page.Items, page.Total
 		answer := "По заданным фильтрам расходов не найдено."

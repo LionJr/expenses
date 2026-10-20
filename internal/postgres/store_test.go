@@ -232,7 +232,7 @@ func TestPostgresIntegration(t *testing.T) {
 			handler.ServeHTTP(w, r)
 			return w
 		}
-		w := request("POST", "/api/expenses", `{"user_id":"101","amount":"35050","category":"еда","spent_at":"2026-10-17","comment":"API"}`)
+		w := request(http.MethodPost, "/api/expenses", `{"user_id":"101","amount":"35050","category":"еда","spent_at":"2026-10-17","comment":"API"}`)
 		if w.Code != http.StatusCreated {
 			t.Fatalf("create %d %s", w.Code, w.Body)
 		}
@@ -241,27 +241,27 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatal(e)
 		}
 		path := fmt.Sprintf("/api/expenses/%d", created.ID)
-		if w = request("PATCH", path, `{"comment":"","amount":"9223372036854775807"}`); w.Code != http.StatusOK {
+		if w = request(http.MethodPatch, path, `{"comment":"","amount":"9223372036854775807"}`); w.Code != http.StatusOK {
 			t.Fatalf("patch %d %s", w.Code, w.Body)
 		}
-		if w = request("GET", "/api/expenses?user_id=101", ""); w.Code != http.StatusBadRequest {
+		if w = request(http.MethodGet, "/api/expenses?user_id=101", ""); w.Code != http.StatusBadRequest {
 			t.Fatalf("overflow not handled: %d", w.Code)
 		}
-		if w = request("DELETE", path, ""); w.Code != http.StatusNoContent {
+		if w = request(http.MethodDelete, path, ""); w.Code != http.StatusNoContent {
 			t.Fatal(w.Code)
 		}
-		if w = request("DELETE", path, ""); w.Code != http.StatusNotFound {
+		if w = request(http.MethodDelete, path, ""); w.Code != http.StatusNotFound {
 			t.Fatal(w.Code)
 		}
 		for _, body := range []string{`{"user_id":"101","amount":35000}`, `{"user_id":"101","amount":"0"}`, `{"garbage":true}`, `{} {}`} {
-			if w = request("POST", "/api/expenses", body); w.Code != http.StatusBadRequest {
+			if w = request(http.MethodPost, "/api/expenses", body); w.Code != http.StatusBadRequest {
 				t.Fatalf("accepted bad JSON: %s: %d", body, w.Code)
 			}
 		}
-		if w = request("GET", "/api/expenses?date_from=2026-10-18&date_to=2026-10-17", ""); w.Code != http.StatusBadRequest {
+		if w = request(http.MethodGet, "/api/expenses?date_from=2026-10-18&date_to=2026-10-17", ""); w.Code != http.StatusBadRequest {
 			t.Fatal(w.Code)
 		}
-		if w = request("GET", "/", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Семейный счёт") {
+		if w = request(http.MethodGet, "/", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Семейный счёт") {
 			t.Fatal("panel unavailable")
 		}
 	})

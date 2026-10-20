@@ -38,13 +38,13 @@ func TestValidationAndCrossOrigin(t *testing.T) {
 		method, path, body, origin string
 		status                     int
 	}{
-		{"POST", "/api/expenses", `{"user_id":"42","amount":"35000","category":"еда","spent_at":"2026-10-17"}`, "", http.StatusCreated},
-		{"POST", "/api/expenses", `{"user_id":"42","amount":35000}`, "", http.StatusBadRequest},
-		{"PATCH", "/api/expenses/1", `{}`, "", http.StatusBadRequest},
-		{"PATCH", "/api/expenses/1", `{"comment":""}`, "", http.StatusOK},
-		{"GET", "/api/expenses?limit=101", "", "", http.StatusBadRequest},
-		{"GET", "/api/expenses?offset=-1", "", "", http.StatusBadRequest},
-		{"DELETE", "/api/expenses/1", "", "https://other.test", http.StatusForbidden},
+		{http.MethodPost, "/api/expenses", `{"user_id":"42","amount":"35000","category":"еда","spent_at":"2026-10-17"}`, "", http.StatusCreated},
+		{http.MethodPost, "/api/expenses", `{"user_id":"42","amount":35000}`, "", http.StatusBadRequest},
+		{http.MethodPatch, "/api/expenses/1", `{}`, "", http.StatusBadRequest},
+		{http.MethodPatch, "/api/expenses/1", `{"comment":""}`, "", http.StatusOK},
+		{http.MethodGet, "/api/expenses?limit=101", "", "", http.StatusBadRequest},
+		{http.MethodGet, "/api/expenses?offset=-1", "", "", http.StatusBadRequest},
+		{http.MethodDelete, "/api/expenses/1", "", "https://other.test", http.StatusForbidden},
 	} {
 		t.Run(test.method+test.path+test.body, func(t *testing.T) {
 			s := &fakeStore{}
@@ -83,7 +83,7 @@ func (s *deadlineStore) List(ctx context.Context, _ expense.Filter) (expense.Pag
 func TestAPIDatabaseDeadline(t *testing.T) {
 	store := &deadlineStore{fakeStore: &fakeStore{}}
 	handler := (&API{Store: expensesvc.New(store), RequestTimeout: time.Millisecond}).Handler()
-	r := httptest.NewRequest("GET", "/api/expenses", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/expenses", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	if w.Code != http.StatusGatewayTimeout || !store.deadlineSeen || !strings.Contains(w.Body.String(), `"error"`) {
@@ -113,7 +113,7 @@ func TestDecodeJSONMediaType(t *testing.T) {
 		{"application/json; charset=\"unterminated", false},
 	} {
 		t.Run(test.contentType, func(t *testing.T) {
-			r := httptest.NewRequest("POST", "/api/expenses", strings.NewReader(`{"comment":"кофе"}`))
+			r := httptest.NewRequest(http.MethodPost, "/api/expenses", strings.NewReader(`{"comment":"кофе"}`))
 			r.Header.Set("Content-Type", test.contentType)
 			var body struct {
 				Comment string `json:"comment"`
@@ -134,7 +134,7 @@ func TestPanelConcurrentRendering(t *testing.T) {
 	var requests sync.WaitGroup
 	for range 8 {
 		requests.Go(func() {
-			r := httptest.NewRequest("GET", "/", nil)
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, r)
 			if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "text/html; charset=utf-8" || !strings.Contains(w.Body.String(), `name="app-timezone" content="Asia/Ashgabat"`) {

@@ -231,7 +231,7 @@ func checkAPILockDeadline(t *testing.T, s *postgres.Store, id int64) {
 		t.Fatal(err)
 	}
 	handler := (&httpapi.API{Store: expensesvc.New(s), RequestTimeout: 20 * time.Millisecond}).Handler()
-	request := httptest.NewRequest("PATCH", fmt.Sprintf("/api/expenses/%d", id), strings.NewReader(`{"comment":"must not overwrite locked row"}`))
+	request := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/expenses/%d", id), strings.NewReader(`{"comment":"must not overwrite locked row"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)

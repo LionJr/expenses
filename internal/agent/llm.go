@@ -44,24 +44,32 @@ type Client struct {
 	HTTP                *http.Client
 }
 
+type completionResponse struct {
+	Choices []struct {
+		Message Message `json:"message"`
+	} `json:"choices"`
+}
+
 func (c *Client) Complete(ctx context.Context, messages []Message, tools []Tool) (Message, error) {
 	data, err := json.Marshal(map[string]any{"model": c.Model, "messages": messages, "tools": tools, "tool_choice": "auto", "parallel_tool_calls": false, "temperature": 0, "max_completion_tokens": 1000})
 	if err != nil {
 		return Message{}, providerFailure("request_encoding", 0, 0, err)
 	}
 	for attempt := 0; attempt < 3; attempt++ {
-		req, e := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(c.BaseURL, "/")+"/chat/completions", bytes.NewReader(data))
+		req, e := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.BaseURL, "/")+"/chat/completions", bytes.NewReader(data))
 		if e != nil {
 			return Message{}, providerFailure("configuration", 0, attempt+1, e)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.Key)
 		req.Header.Set("Content-Type", "application/json")
+
 		resp, e := c.HTTP.Do(req)
 		if e != nil {
 			return Message{}, providerFailure("network", 0, attempt+1, e)
 		}
 		body, e := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
 		resp.Body.Close()
+
 		if e != nil {
 			return Message{}, providerFailure("response_read", resp.StatusCode, attempt+1, e)
 		}
@@ -93,11 +101,7 @@ func (c *Client) Complete(ctx context.Context, messages []Message, tools []Tool)
 		if resp.StatusCode != http.StatusOK {
 			return Message{}, providerFailure(statusKind(resp.StatusCode), resp.StatusCode, attempt+1, nil)
 		}
-		var result struct {
-			Choices []struct {
-				Message Message `json:"message"`
-			} `json:"choices"`
-		}
+		var result completionResponse
 		if err = json.Unmarshal(body, &result); err != nil || len(result.Choices) != 1 {
 			return Message{}, providerFailure("invalid_response", resp.StatusCode, attempt+1, err)
 		}

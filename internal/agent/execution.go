@@ -77,6 +77,7 @@ func strictArgs(call ToolCall) (arguments, error) {
 	}
 	return p, nil
 }
+
 func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call ToolCall, text string, s *Session, selected int64, mutated *bool, permission requestPermissions) (json.RawMessage, error) {
 	if user <= 0 {
 		return nil, expense.ErrNotFound
@@ -89,20 +90,20 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		return nil, err
 	}
 	name := call.Function.Name
-	if err := permission.authorize(name, p); err != nil {
+	if err = permission.authorize(name, p); err != nil {
 		return nil, err
 	}
-	if name == "clarify_request" {
+	if name == toolClarifyRequest {
 		question, err := clarification(p.Field)
 		if err != nil {
 			return nil, err
 		}
 		return json.Marshal(map[string]string{"question": question})
 	}
-	if name == "summarize_expenses" && listRequest.MatchString(text) {
+	if name == toolSummarizeExpenses && listRequest.MatchString(text) {
 		return nil, expense.Invalid("пользователь просит список расходов: вызови list_expenses с указанными периодом и категорией, а не summarize_expenses")
 	}
-	if name == "list_expenses" || name == "summarize_expenses" {
+	if name == toolListExpenses || name == toolSummarizeExpenses {
 		if p.Limit < 0 || p.Limit > 10 {
 			return nil, expense.Invalid("limit должен быть от 1 до 10")
 		}
@@ -132,7 +133,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		if e != nil {
 			return nil, e
 		}
-		if name == "summarize_expenses" {
+		if name == toolSummarizeExpenses {
 			return json.Marshal(map[string]any{"total": page.Total, "total_amount": strconv.FormatInt(page.TotalAmount, 10)})
 		}
 		s.LatestID = 0
@@ -158,7 +159,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 	i := expense.Input{UserID: user}
 	patch := expense.Patch{Amount: amount, Category: p.Category, SpentAt: p.Date, Comment: p.Comment}
 	var id int64
-	if name == "create_expense" {
+	if name == toolCreateExpense {
 		if amount == nil || p.Category == nil || p.Date == nil {
 			return nil, expense.Invalid("нужны сумма, категория и дата")
 		}
@@ -206,10 +207,10 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		}
 		if s.CandidateTotal > 1 && selected != id && s.LatestID != id {
 			operation := expense.Delete
-			if name == "update_expense" {
+			if name == toolUpdateExpense {
 				operation = expense.Update
 			}
-			if err := a.Store.ValidateCommand(expense.Command{Operation: operation, ID: id, Patch: patch}); err != nil {
+			if err = a.Store.ValidateCommand(expense.Command{Operation: operation, ID: id, Patch: patch}); err != nil {
 				return nil, err
 			}
 			s.Pending = &PendingAction{Kind: name, Patch: patch, ExpectedAmount: patch.ExpectedAmount, IntentValidated: true}
@@ -227,11 +228,11 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 func (a *Agent) executeMutation(ctx context.Context, update, owner int64, name string, id int64, input expense.Input, patch expense.Patch) (json.RawMessage, error) {
 	var operation expense.Operation
 	switch name {
-	case "create_expense":
+	case toolCreateExpense:
 		operation = expense.Create
-	case "update_expense":
+	case toolUpdateExpense:
 		operation = expense.Update
-	case "delete_expense":
+	case toolDeleteExpense:
 		operation = expense.Delete
 	default:
 		return nil, expense.Invalid("неизвестная операция")

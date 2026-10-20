@@ -68,7 +68,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 		{"202", "50000", "2040-02-29", "еда"},
 	} {
 		body, _ := json.Marshal(map[string]string{"user_id": row.user, "amount": row.amount, "spent_at": row.date, "category": row.category, "comment": "http-acceptance"})
-		data := request("POST", "/api/expenses", string(body), server.URL, 201)
+		data := request(http.MethodPost, "/api/expenses", string(body), server.URL, 201)
 		var wire map[string]any
 		if err := json.Unmarshal(data, &wire); err != nil {
 			t.Fatal(err)
@@ -94,7 +94,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 	filter := "/api/expenses?user_id=101&category=еда&date_from=2040-02-28&date_to=2040-02-29&limit=1"
 	for offset, wantID := range []int64{created[1].ID, created[0].ID} {
 		var page expensewire.Page
-		data := request("GET", fmt.Sprintf("%s&offset=%d", filter, offset), "", "", 200)
+		data := request(http.MethodGet, fmt.Sprintf("%s&offset=%d", filter, offset), "", "", 200)
 		if err := json.Unmarshal(data, &page); err != nil {
 			t.Fatal(err)
 		}
@@ -103,7 +103,7 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 		}
 	}
 	var empty expensewire.Page
-	if err := json.Unmarshal(request("GET", filter+"&offset=99", "", "", 200), &empty); err != nil {
+	if err := json.Unmarshal(request(http.MethodGet, filter+"&offset=99", "", "", 200), &empty); err != nil {
 		t.Fatal(err)
 	}
 	if empty.Total != 2 || empty.TotalAmount != 32345 || len(empty.Items) != 0 {
@@ -116,16 +116,16 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 		`{"comment":"x","unexpected":true}`, `{"comment":"x"} {}`, `{"comment":"` + strings.Repeat("я", 1001) + `"}`,
 		`{"comment":"` + strings.Repeat("x", 17000) + `"}`,
 	} {
-		request("PATCH", path, bad, "", 400)
+		request(http.MethodPatch, path, bad, "", 400)
 	}
-	request("PATCH", path, `{"comment":"forbidden"}`, "https://other.example", 403)
+	request(http.MethodPatch, path, `{"comment":"forbidden"}`, "https://other.example", 403)
 	// A failed request must not partially change any field.
 	page, err := expensesvc.New(s).List(context.Background(), expense.Filter{ID: created[0].ID, UserID: 101})
 	if err != nil || len(page.Items) != 1 || page.Items[0].Amount != 12345 || page.Items[0].Comment != "http-acceptance" {
 		t.Fatalf("invalid request changed row: %+v %v", page, err)
 	}
 	var updated expensewire.Expense
-	data := request("PATCH", path, `{"comment":"","amount":"9007199254740993"}`, "", 200)
+	data := request(http.MethodPatch, path, `{"comment":"","amount":"9007199254740993"}`, "", 200)
 	if err := json.Unmarshal(data, &updated); err != nil {
 		t.Fatal(err)
 	}
@@ -133,11 +133,11 @@ func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
 		t.Fatalf("patch precision/preservation: %s", data)
 	}
 	for _, query := range []string{"date_from=2041-02-29", "date_from=2040-03-01&date_to=2040-02-28", "limit=-1", "offset=-1", "user_id=-1", "category=unknown"} {
-		request("GET", "/api/expenses?"+query, "", "", 400)
+		request(http.MethodGet, "/api/expenses?"+query, "", "", 400)
 	}
-	request("DELETE", path, "", "", 204)
-	request("DELETE", path, "", "", 404)
-	request("PATCH", path, `{"comment":"gone"}`, "", 404)
+	request(http.MethodDelete, path, "", "", 204)
+	request(http.MethodDelete, path, "", "", 404)
+	request(http.MethodPatch, path, `{"comment":"gone"}`, "", 404)
 }
 
 type offlineProvider struct{ calls int }
