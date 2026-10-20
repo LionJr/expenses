@@ -11,10 +11,9 @@ const (
 )
 
 // Command is independent of Telegram updates and model tool arguments.
-// Owner 0 is reserved for the existing administrative panel operations.
 type Command struct {
-	Operation Operation
 	ID        int64
+	Operation Operation
 	Input     Input
 	Patch     Patch
 }

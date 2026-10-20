@@ -123,6 +123,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		}
 		f.UserID = n
 	}
+	f = f.Normalize()
 	if e := f.Validate(); e != nil {
 		a.fail(w, e)
 		return

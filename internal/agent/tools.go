@@ -12,7 +12,7 @@ func str(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
 }
 func Tools() []Tool {
-	category := map[string]any{"type": "string", "enum": expense.Categories}
+	category := map[string]any{"type": "string", "enum": expense.Categories()}
 	fields := func() map[string]any {
 		return map[string]any{"amount_rubles": str("Положительная сумма в рублях, десятичная строка, например 350.50"), "category": category, "spent_at": str("Дата YYYY-MM-DD"), "comment": str("Комментарий до 1000 символов")}
 	}

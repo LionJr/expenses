@@ -128,6 +128,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		if p.Category != nil {
 			f.Category = *p.Category
 		}
+		f = f.Normalize()
 		if err = f.Validate(); err != nil {
 			return nil, err
 		}

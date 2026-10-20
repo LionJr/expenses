@@ -54,3 +54,43 @@ func TestValidation(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestFilterValidationDoesNotApplyDefaults(t *testing.T) {
+	f := Filter{UserID: 42, Category: "еда", Search: "кофе", Offset: 5}
+	original := f
+	if err := f.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if f != original {
+		t.Fatal("validation modified the filter")
+	}
+	normalized := f.Normalize()
+	if normalized.Limit != 20 {
+		t.Fatalf("default limit: %d", normalized.Limit)
+	}
+	normalized.Limit = original.Limit
+	if f != original || normalized != original {
+		t.Fatal("normalization changed fields other than the default limit")
+	}
+	for _, limit := range []int{-1, 1, 100, 101} {
+		f := (Filter{Limit: limit}).Normalize()
+		if f.Limit != limit {
+			t.Fatalf("explicit limit %d was overwritten", limit)
+		}
+		if err := f.Validate(); (err != nil) != (limit < 0 || limit > 100) {
+			t.Fatalf("limit %d: %v", limit, err)
+		}
+	}
+}
+
+func TestCategoriesCannotBeChangedByCaller(t *testing.T) {
+	values := Categories()
+	if len(values) != 7 {
+		t.Fatalf("category count: %d", len(values))
+	}
+	original := values[0]
+	values[0] = "изменённая категория"
+	if !Category(original) || Category(values[0]) || Categories()[0] != original {
+		t.Fatal("caller changed the accepted categories")
+	}
+}

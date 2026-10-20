@@ -26,6 +26,7 @@ func (s *Store) List(ctx context.Context, f expense.Filter) (expense.Page, error
 }
 func list(ctx context.Context, q queryer, f expense.Filter) (expense.Page, error) {
 	p := expense.Page{Items: []expense.Expense{}}
+	f = f.Normalize()
 	if err := f.Validate(); err != nil {
 		return p, err
 	}

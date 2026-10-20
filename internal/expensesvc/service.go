@@ -24,6 +24,7 @@ func New(repository Repository) *Service { return &Service{repository: repositor
 
 func (s *Service) Users(ctx context.Context) ([]expense.User, error) { return s.repository.Users(ctx) }
 func (s *Service) List(ctx context.Context, f expense.Filter) (expense.Page, error) {
+	f = f.Normalize()
 	if err := f.Validate(); err != nil {
 		return expense.Page{}, err
 	}
