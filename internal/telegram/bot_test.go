@@ -1,9 +1,11 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -100,6 +102,33 @@ func TestAllowlistPrivateChatAndDuplicate(t *testing.T) {
 	}
 	if a.calls != 1 || sends != 1 || store.state != "sent" {
 		t.Fatal("duplicate update reprocessed")
+	}
+}
+
+func TestDeniedPrivateMessageLogsOnlyIdentifiers(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	store := &memoryStore{}
+	a := &responder{}
+	b := Bot{Allowed: map[int64]bool{42: true}, Store: store, Agent: a}
+	u := update(t, `{"update_id":123,"message":{"from":{"id":99,"first_name":"Private name","username":"private_username"},"chat":{"id":99,"type":"private"},"text":"private message"}}`)
+	if err := b.Handle(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		t.Fatal(err)
+	}
+	if entry["msg"] != "Telegram access denied" || entry["user_id"] != float64(99) || entry["update_id"] != float64(123) {
+		t.Fatalf("unexpected audit entry: %v", entry)
+	}
+	if len(entry) != 5 || entry["time"] == nil || entry["level"] != "WARN" {
+		t.Fatalf("unexpected audit fields: %v", entry)
+	}
+	if store.starts != 0 || a.calls != 0 {
+		t.Fatal("denied message reached storage/LLM")
 	}
 }
 func TestDeliveryFailureUsesSavedReply(t *testing.T) {

@@ -174,7 +174,11 @@ func pause(ctx context.Context, d time.Duration) bool {
 
 func (b *Bot) Handle(ctx context.Context, u Update) error {
 	m := u.Message
-	if m == nil || m.From == nil || m.From.IsBot || m.Chat.Type != "private" || m.Chat.ID != m.From.ID || !b.Allowed[m.From.ID] {
+	if m == nil || m.From == nil || m.From.IsBot || m.Chat.Type != "private" || m.Chat.ID != m.From.ID {
+		return nil
+	}
+	if !b.Allowed[m.From.ID] {
+		slog.Warn("Telegram access denied", "user_id", m.From.ID, "update_id", u.ID)
 		return nil
 	}
 	user := m.From.ID
