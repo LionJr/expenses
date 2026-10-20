@@ -41,7 +41,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer store.DB.Close()
+	defer store.Close()
 
 	expenses := expensesvc.New(store)
 	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String(), RequestTimeout: cfg.HTTPRequestTimeout}
@@ -57,6 +57,10 @@ func run() error {
 	botErrors := make(chan error, 1)
 	botDone := make(chan struct{})
 	if cfg.BotToken != "" {
+		allowed := make(map[int64]bool, len(cfg.Allowed))
+		for _, id := range cfg.Allowed {
+			allowed[id] = true
+		}
 		a := &agent.Agent{
 			Store: expenses,
 			LLM: &agent.Client{
@@ -71,7 +75,7 @@ func run() error {
 		bot := &telegram.Bot{
 			Token:   cfg.BotToken,
 			HTTP:    &http.Client{Timeout: 35 * time.Second},
-			Allowed: store.Allowed,
+			Allowed: allowed,
 			Store:   store,
 			Agent:   a,
 		}

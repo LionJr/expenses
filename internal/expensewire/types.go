@@ -71,7 +71,11 @@ func Expenses(items []Expense) []expense.Expense {
 	return result
 }
 func FromPage(v expense.Page) Page {
-	return Page{Items: FromExpenses(v.Items), Total: v.Total, TotalAmount: v.TotalAmount}
+	items := FromExpenses(v.Items)
+	if items == nil {
+		items = []Expense{}
+	}
+	return Page{Items: items, Total: v.Total, TotalAmount: v.TotalAmount}
 }
 func (v Page) Domain() expense.Page {
 	return expense.Page{Items: Expenses(v.Items), Total: v.Total, TotalAmount: v.TotalAmount}

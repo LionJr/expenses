@@ -178,7 +178,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	}))
 	defer server.Close()
 	newBot := func(store *postgres.Store) *telegram.Bot {
-		return &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: store.Allowed, Store: store, Agent: &agent.Agent{Store: expensesvc.New(store), LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		return &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: postgres.AllowedForTest(store), Store: store, Agent: &agent.Agent{Store: expensesvc.New(store), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 	}
 	bot := newBot(s)
 	seq := int64(15000)
@@ -199,7 +199,7 @@ func checkRealConversation(t *testing.T, s *postgres.Store, dsn string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer reopened.DB.Close()
+	defer reopened.Close()
 	bot = newBot(reopened)
 	send("сумму")
 	send("-1")
@@ -304,7 +304,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 		fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d}}`, 100+len(replies))
 	}))
 	defer server.Close()
-	bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s,
+	bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: postgres.AllowedForTest(s), Store: s,
 		Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second,
 			Now: func() time.Time { return time.Date(2043, 10, 19, 10, 0, 0, 0, time.UTC) }}}
 	seq := int64(16000)

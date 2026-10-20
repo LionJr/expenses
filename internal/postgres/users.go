@@ -7,30 +7,32 @@ import (
 )
 
 func (s *Store) Users(ctx context.Context) ([]expense.User, error) {
-	rows, err := s.DB.QueryContext(ctx, "SELECT id,name,username FROM users ORDER BY id")
-	if err != nil {
+	var rows []userRow
+	query := `SELECT id, name, username
+	          FROM users
+	          ORDER BY id`
+	if err := s.db.SelectContext(ctx, &rows, query); err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	users := []expense.User{}
-	for rows.Next() {
-		var u expense.User
-		if err = rows.Scan(&u.ID, &u.Name, &u.Username); err != nil {
-			return nil, err
-		}
-		if s.Allowed[u.ID] {
-			users = append(users, u)
+	users := make([]expense.User, 0, len(rows))
+	for _, row := range rows {
+		if s.allowed[row.ID] {
+			users = append(users, expense.User(row))
 		}
 	}
-	return users, rows.Err()
+	return users, nil
 }
+
 func (s *Store) UpdateUser(ctx context.Context, id int64, name, username string) error {
 	if err := expense.Text(name + username); err != nil {
 		return err
 	}
-	if !s.Allowed[id] {
+	if !s.allowed[id] {
 		return expense.ErrNotFound
 	}
-	_, err := s.DB.ExecContext(ctx, "UPDATE users SET name=$2,username=$3 WHERE id=$1", id, name, username)
+	query := `UPDATE users
+	          SET name = $2, username = $3
+	          WHERE id = $1`
+	_, err := s.db.ExecContext(ctx, query, id, name, username)
 	return err
 }

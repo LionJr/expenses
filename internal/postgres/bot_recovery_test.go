@@ -111,7 +111,7 @@ func checkBotRecovery(t *testing.T, s *postgres.Store) {
 				t.Fatal("operation result leaked across owners")
 			}
 			var count int
-			if err = s.DB.QueryRowContext(ctx, "SELECT count(*) FROM expense_operations WHERE operation_key=$1", key).Scan(&count); err != nil || count != 1 {
+			if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT count(*) FROM expense_operations WHERE operation_key=$1", key).Scan(&count); err != nil || count != 1 {
 				t.Fatal("duplicate operation")
 			}
 		})
@@ -165,7 +165,7 @@ func checkDeliveryOutbox(t *testing.T, s *postgres.Store) {
 		t.Fatalf("terminal state=%s err=%v", state, err)
 	}
 	var attempts, code int
-	if err = s.DB.QueryRowContext(ctx, "SELECT delivery_attempts,last_error_code FROM telegram_updates WHERE update_id=$1", id).Scan(&attempts, &code); err != nil || attempts != 3 || code != 503 {
+	if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT delivery_attempts,last_error_code FROM telegram_updates WHERE update_id=$1", id).Scan(&attempts, &code); err != nil || attempts != 3 || code != 503 {
 		t.Fatal("delivery metadata not persisted")
 	}
 }
@@ -174,11 +174,11 @@ func checkBaselineReopen(t *testing.T, s *postgres.Store, dsn string) {
 	ctx := context.Background()
 	// A separate schema verifies that the complete baseline can be reopened
 	// without replaying DDL or changing expenses and queued replies.
-	if _, err := s.DB.ExecContext(ctx, "CREATE SCHEMA upgrade_test"); err != nil {
+	if _, err := postgres.DBForTest(s).ExecContext(ctx, "CREATE SCHEMA upgrade_test"); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if _, err := s.DB.ExecContext(ctx, "DROP SCHEMA upgrade_test CASCADE"); err != nil {
+		if _, err := postgres.DBForTest(s).ExecContext(ctx, "DROP SCHEMA upgrade_test CASCADE"); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -213,9 +213,9 @@ func checkBaselineReopen(t *testing.T, s *postgres.Store, dsn string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer upgraded.DB.Close()
+	defer upgraded.Close()
 	var stateType string
-	if err := upgraded.DB.QueryRowContext(ctx, `SELECT udt_name FROM information_schema.columns
+	if err := postgres.DBForTest(upgraded).QueryRowContext(ctx, `SELECT udt_name FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = 'telegram_updates' AND column_name = 'state'`).Scan(&stateType); err != nil || stateType != "telegram_update_state" {
 		t.Fatalf("state was not upgraded to enum: %s %v", stateType, err)
 	}

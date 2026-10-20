@@ -8,34 +8,43 @@ import (
 
 	"github.com/LionJr/expenses/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jmoiron/sqlx"
 )
+
+// "EXPM" in ASCII identifies the expenses migration lock.
+const migrationsLockID int64 = 0x4558504D
 
 // Store persists expense input normalized and validated by expensesvc.
 // It owns transactions, owner checks and database constraints.
 type Store struct {
-	DB      *sql.DB
-	Allowed map[int64]bool
+	db      *sqlx.DB
+	allowed map[int64]bool
 }
+
+// Close releases the database connection pool.
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
 type queryer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
+	GetContext(context.Context, any, string, ...any) error
+	SelectContext(context.Context, any, string, ...any) error
 }
 
 func Open(ctx context.Context, dsn string, ids []int64) (*Store, error) {
-	db, err := sql.Open("pgx", dsn)
+	db, err := sqlx.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
-	s := &Store{DB: db, Allowed: map[int64]bool{}}
+	s := &Store{db: db, allowed: map[int64]bool{}}
 	for _, id := range ids {
-		s.Allowed[id] = true
+		s.allowed[id] = true
 	}
 	for attempt := 0; attempt < 15; attempt++ {
-		err = db.PingContext(ctx)
-		if err == nil {
+		if err = db.PingContext(ctx); err == nil {
 			break
 		}
 		select {
@@ -55,18 +64,24 @@ func Open(ctx context.Context, dsn string, ids []int64) (*Store, error) {
 	}
 	return s, nil
 }
+
 func (s *Store) migrate(ctx context.Context, ids []int64) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(65102933)"); err != nil {
+
+	selectLockQuery := `SELECT pg_advisory_xact_lock($1)`
+	if _, err = tx.ExecContext(ctx, selectLockQuery, migrationsLockID); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)"); err != nil {
+
+	createSchemaMigrationsQuery := `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)`
+	if _, err = tx.ExecContext(ctx, createSchemaMigrationsQuery); err != nil {
 		return err
 	}
+
 	names, err := migrations.Files.ReadDir(".")
 	if err != nil {
 		return err
@@ -76,7 +91,8 @@ func (s *Store) migrate(ctx context.Context, ids []int64) error {
 			continue
 		}
 		var exists bool
-		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version=$1)", name.Name()).Scan(&exists); err != nil {
+		selectSchemaMigrationsQuery := `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`
+		if err = tx.GetContext(ctx, &exists, selectSchemaMigrationsQuery, name.Name()); err != nil {
 			return err
 		}
 		if exists {
@@ -89,12 +105,18 @@ func (s *Store) migrate(ctx context.Context, ids []int64) error {
 		if _, err = tx.ExecContext(ctx, string(data)); err != nil {
 			return fmt.Errorf("migration %s: %w", name.Name(), err)
 		}
-		if _, err = tx.ExecContext(ctx, "INSERT INTO schema_migrations(version) VALUES($1)", name.Name()); err != nil {
+		insertSchemaMigrationsQuery := `INSERT INTO schema_migrations (version)
+		                                VALUES ($1)`
+		if _, err = tx.ExecContext(ctx, insertSchemaMigrationsQuery, name.Name()); err != nil {
 			return err
 		}
 	}
+
 	for _, id := range ids {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO users(id) VALUES($1) ON CONFLICT DO NOTHING", id); err != nil {
+		insertUsersQuery := `INSERT INTO users (id)
+		                     VALUES ($1)
+		                     ON CONFLICT DO NOTHING`
+		if _, err = tx.ExecContext(ctx, insertUsersQuery, id); err != nil {
 			return err
 		}
 	}
@@ -102,10 +124,11 @@ func (s *Store) migrate(ctx context.Context, ids []int64) error {
 }
 
 // Explicit transactions keep a canceled write from completing in autocommit
-// after its caller has already received a deadline error. BeginTx also arranges
-// rollback on context cancellation; Commit checks the transaction context.
-func inTransaction(ctx context.Context, db *sql.DB, operation func(queryer) error) error {
-	tx, err := db.BeginTx(ctx, nil)
+// after its caller has already received a deadline error. BeginTxx wraps
+// database/sql BeginTx, which arranges rollback on context cancellation;
+// Commit checks the transaction context.
+func inTransaction(ctx context.Context, db *sqlx.DB, operation func(queryer) error) error {
+	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}

@@ -102,7 +102,7 @@ func checkChoiceDeliveryChain(t *testing.T, s *postgres.Store) {
 	if err != nil || page.Total != 3 {
 		t.Fatal("undelivered list authorized deletion")
 	}
-	if _, err = s.DB.ExecContext(ctx, "UPDATE telegram_updates SET retry_at=now() WHERE update_id=9101"); err != nil {
+	if _, err = postgres.DBForTest(s).ExecContext(ctx, "UPDATE telegram_updates SET retry_at=now() WHERE update_id=9101"); err != nil {
 		t.Fatal(err)
 	}
 	runCtx, cancel := context.WithCancel(ctx)
@@ -195,7 +195,7 @@ func checkChoiceAcknowledgement(t *testing.T, s *postgres.Store) {
 	if err != nil || !current {
 		t.Fatal("new prompt missing")
 	}
-	if _, err = s.DB.ExecContext(ctx, "UPDATE bot_sessions SET expires_at=now()-interval '1 minute' WHERE user_id=101"); err != nil {
+	if _, err = postgres.DBForTest(s).ExecContext(ctx, "UPDATE bot_sessions SET expires_at=now()-interval '1 minute' WHERE user_id=101"); err != nil {
 		t.Fatal(err)
 	}
 	current, err = s.ChoicePromptCurrent(ctx, 9203, 101)
@@ -221,7 +221,7 @@ func checkChoiceAcknowledgement(t *testing.T, s *postgres.Store) {
 
 func checkAPILockDeadline(t *testing.T, s *postgres.Store, id int64) {
 	ctx := context.Background()
-	tx, err := s.DB.BeginTx(ctx, nil)
+	tx, err := postgres.DBForTest(s).BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func checkAPILockDeadline(t *testing.T, s *postgres.Store, id int64) {
 		t.Fatal(err)
 	}
 	var comment string
-	if err = s.DB.QueryRowContext(ctx, "SELECT comment FROM expenses WHERE id=$1", id).Scan(&comment); err != nil {
+	if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT comment FROM expenses WHERE id=$1", id).Scan(&comment); err != nil {
 		t.Fatalf("read after canceled update: %v", err)
 	}
 	if comment == "must not overwrite locked row" {

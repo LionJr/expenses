@@ -170,7 +170,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			fmt.Fprint(w, `{"ok":true,"result":{"message_id":20000}}`)
 		}))
 		defer server.Close()
-		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: postgres.AllowedForTest(s), Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 		runCtx, stop := context.WithTimeout(ctx, 3*time.Second)
 		cancel = stop
 		defer stop()
@@ -204,7 +204,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 			fmt.Fprint(w, `{"ok":true,"result":{"message_id":22000}}`)
 		}))
 		defer server.Close()
-		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: s.Allowed, Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
+		bot := &telegram.Bot{BaseURL: server.URL, HTTP: server.Client(), Allowed: postgres.AllowedForTest(s), Store: s, Agent: &agent.Agent{Store: expensesvc.New(s), LLM: provider, Location: time.UTC, Timeout: time.Second}}
 		if err := bot.Handle(ctx, privateUpdate(t, 19201, 19201, "кофе")); err != nil {
 			t.Fatal(err)
 		}

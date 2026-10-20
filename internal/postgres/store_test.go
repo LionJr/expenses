@@ -49,27 +49,27 @@ func TestPostgresIntegration(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer s.DB.Close()
+	defer s.Close()
 	var dbName string
-	if e = s.DB.QueryRowContext(ctx, "SELECT current_database()").Scan(&dbName); e != nil {
+	if e = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT current_database()").Scan(&dbName); e != nil {
 		t.Fatal(e)
 	}
 	if !strings.HasSuffix(dbName, "_test") {
 		t.Fatal("refusing integration tests outside a dedicated _test database")
 	}
-	if _, e = s.DB.ExecContext(ctx, "TRUNCATE expense_operations,telegram_updates,bot_sessions,expenses RESTART IDENTITY"); e != nil {
+	if _, e = postgres.DBForTest(s).ExecContext(ctx, "TRUNCATE expense_operations,telegram_updates,bot_sessions,expenses RESTART IDENTITY"); e != nil {
 		t.Fatal(e)
 	}
 	t.Run("delivery state enum", func(t *testing.T) {
 		var stateType string
-		if err := s.DB.QueryRowContext(ctx, `SELECT udt_name FROM information_schema.columns
+		if err := postgres.DBForTest(s).QueryRowContext(ctx, `SELECT udt_name FROM information_schema.columns
             WHERE table_schema = current_schema() AND table_name = 'telegram_updates' AND column_name = 'state'`).Scan(&stateType); err != nil {
 			t.Fatal(err)
 		}
 		if stateType != "telegram_update_state" {
 			t.Fatalf("unexpected state type: %s", stateType)
 		}
-		if _, err := s.DB.ExecContext(ctx, "INSERT INTO telegram_updates(update_id,user_id,state) VALUES(-1,101,'invalid')"); err == nil {
+		if _, err := postgres.DBForTest(s).ExecContext(ctx, "INSERT INTO telegram_updates(update_id,user_id,state) VALUES(-1,101,'invalid')"); err == nil {
 			t.Fatal("invalid delivery state accepted")
 		}
 	})
@@ -189,7 +189,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatal("invalid operation committed")
 		}
 		var count int
-		if e = s.DB.QueryRowContext(ctx, "SELECT count(*) FROM expense_operations WHERE operation_key='invalid'").Scan(&count); e != nil || count != 0 {
+		if e = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT count(*) FROM expense_operations WHERE operation_key='invalid'").Scan(&count); e != nil || count != 0 {
 			t.Fatal("failed operation journaled")
 		}
 	})
@@ -200,7 +200,7 @@ func TestPostgresIntegration(t *testing.T) {
 		if b, e := s.LoadSession(ctx, 101); e != nil || len(b) == 0 {
 			t.Fatal("missing session")
 		}
-		if _, e = s.DB.ExecContext(ctx, "UPDATE bot_sessions SET expires_at=now()-interval '1 minute' WHERE user_id=101"); e != nil {
+		if _, e = postgres.DBForTest(s).ExecContext(ctx, "UPDATE bot_sessions SET expires_at=now()-interval '1 minute' WHERE user_id=101"); e != nil {
 			t.Fatal(e)
 		}
 		if b, e := s.LoadSession(ctx, 101); e != nil || len(b) != 0 {
@@ -278,7 +278,7 @@ func TestPostgresIntegration(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		defer restart.DB.Close()
+		defer restart.Close()
 		p, e := expensesvc.New(restart).List(ctx, expense.Filter{UserID: 101})
 		if e != nil || p.Total < 3 {
 			t.Fatal("data lost on reopen")

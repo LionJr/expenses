@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"strconv"
+	"time"
 
 	"github.com/LionJr/expenses/internal/expense"
 	"github.com/LionJr/expenses/internal/expensewire"
@@ -13,60 +13,52 @@ import (
 
 // Execute atomically journals the result alongside the change. Replays never apply it twice.
 func (s *Store) Execute(ctx context.Context, key string, owner int64, prepare func() (expense.Command, error)) (json.RawMessage, error) {
-	if owner <= 0 || !s.Allowed[owner] {
+	if owner <= 0 || !s.allowed[owner] {
 		return nil, expense.ErrNotFound
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
+
+	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", key); err != nil {
+
+	selectLockQuery := `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`
+	if _, err = tx.ExecContext(ctx, selectLockQuery, key); err != nil {
 		return nil, err
 	}
+
 	var saved []byte
-	err = tx.QueryRowContext(ctx, "SELECT result FROM expense_operations WHERE operation_key=$1 AND user_id=$2", key, owner).Scan(&saved)
+	selectExpenseOperationsQuery := `SELECT result
+	                                 FROM expense_operations
+	                                 WHERE operation_key = $1 AND user_id = $2`
+	err = tx.GetContext(ctx, &saved, selectExpenseOperationsQuery, key, owner)
 	if err == nil {
 		return saved, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
+
 	command, err := prepare()
 	if err != nil {
 		return nil, err
 	}
 	// Bind writes to the authenticated owner, independently of command data.
 	command.Input.UserID = owner
-	var result any
-	switch command.Operation {
-	case expense.Create:
-		result, err = create(ctx, tx, command.Input)
-	case expense.Update:
-		result, err = update(ctx, tx, owner, command.ID, command.Patch)
-	case expense.Delete:
-		err = remove(ctx, tx, owner, command.ID)
-		result = map[string]any{"deleted_id": strconv.FormatInt(command.ID, 10)}
-	default:
-		return nil, expense.Invalid("неизвестная операция")
-	}
+	result, err := executeCommand(ctx, tx, owner, command)
 	if err != nil {
 		return nil, err
 	}
-	saved, err = json.Marshal(operationPayload(result))
+
+	saved, err = json.Marshal(result)
 	if err != nil {
 		return nil, err
 	}
-	var envelope map[string]json.RawMessage
-	if err = json.Unmarshal(saved, &envelope); err != nil {
-		return nil, err
-	}
-	envelope["operation"], _ = json.Marshal(command.Operation)
-	saved, err = json.Marshal(envelope)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO expense_operations(operation_key,user_id,result) VALUES($1,$2,$3::jsonb)", key, owner, string(saved)); err != nil {
+
+	insertExpenseOperationsQuery := `INSERT INTO expense_operations (operation_key, user_id, result, created_at)
+	                                 VALUES ($1, $2, $3::jsonb, $4)`
+	if _, err = tx.ExecContext(ctx, insertExpenseOperationsQuery, key, owner, string(saved), time.Now().UTC()); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(); err != nil {
@@ -77,20 +69,50 @@ func (s *Store) Execute(ctx context.Context, key string, owner int64, prepare fu
 
 // OperationResult is checked before re-running state-dependent agent logic.
 func (s *Store) OperationResult(ctx context.Context, key string, owner int64) (json.RawMessage, error) {
-	if owner <= 0 || !s.Allowed[owner] {
+	if owner <= 0 || !s.allowed[owner] {
 		return nil, expense.ErrNotFound
 	}
+
 	var result []byte
-	err := s.DB.QueryRowContext(ctx, "SELECT result FROM expense_operations WHERE operation_key=$1 AND user_id=$2", key, owner).Scan(&result)
+	query := `SELECT result
+	          FROM expense_operations
+	          WHERE operation_key = $1 AND user_id = $2`
+	err := s.db.GetContext(ctx, &result, query, key, owner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	return result, err
 }
 
-func operationPayload(result any) any {
-	if e, ok := result.(expense.Expense); ok {
-		return expensewire.FromExpense(e)
+// Receipts retain the existing flat JSON format for persisted operation results.
+type expenseReceipt struct {
+	Operation expense.Operation `json:"operation"`
+	expensewire.Expense
+}
+
+type deleteReceipt struct {
+	Operation expense.Operation `json:"operation"`
+	DeletedID int64             `json:"deleted_id,string"`
+}
+
+func executeCommand(ctx context.Context, q queryer, owner int64, command expense.Command) (any, error) {
+	var result expense.Expense
+	var err error
+	switch command.Operation {
+	case expense.Create:
+		result, err = create(ctx, q, command.Input)
+	case expense.Update:
+		result, err = update(ctx, q, owner, command.ID, command.Patch)
+	case expense.Delete:
+		if err = remove(ctx, q, owner, command.ID); err != nil {
+			return nil, err
+		}
+		return deleteReceipt{Operation: expense.Delete, DeletedID: command.ID}, nil
+	default:
+		return nil, expense.Invalid("неизвестная операция")
 	}
-	return result
+	if err != nil {
+		return nil, err
+	}
+	return expenseReceipt{Operation: command.Operation, Expense: expensewire.FromExpense(result)}, nil
 }
