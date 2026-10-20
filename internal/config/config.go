@@ -15,6 +15,7 @@ type Config struct {
 	Allowed                                               []int64
 	Location                                              *time.Location
 	LLMTimeout                                            time.Duration
+	HTTPRequestTimeout                                    time.Duration
 }
 
 func Load() (Config, error) {
@@ -43,6 +44,10 @@ func initialize() (Config, error) {
 	if err != nil {
 		return c, fmt.Errorf("LLM_TIMEOUT must be between 1s and 2m")
 	}
+	c.HTTPRequestTimeout, err = time.ParseDuration(env("HTTP_REQUEST_TIMEOUT", "5s"))
+	if err != nil {
+		return c, fmt.Errorf("HTTP_REQUEST_TIMEOUT must be a positive duration")
+	}
 	seen := map[int64]bool{}
 	for _, v := range strings.Split(os.Getenv("TELEGRAM_ALLOWED_USER_IDS"), ",") {
 		v = strings.TrimSpace(v)
@@ -66,6 +71,9 @@ func validate(c Config) error {
 	}
 	if c.LLMTimeout < time.Second || c.LLMTimeout > 2*time.Minute {
 		return fmt.Errorf("LLM_TIMEOUT must be between 1s and 2m")
+	}
+	if c.HTTPRequestTimeout <= 0 {
+		return fmt.Errorf("HTTP_REQUEST_TIMEOUT must be a positive duration")
 	}
 	for _, id := range c.Allowed {
 		if id <= 0 {

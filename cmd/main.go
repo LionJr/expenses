@@ -44,7 +44,7 @@ func run() error {
 	defer store.DB.Close()
 
 	expenses := expensesvc.New(store)
-	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String()}
+	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String(), RequestTimeout: cfg.HTTPRequestTimeout}
 	server := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           api.Handler(),

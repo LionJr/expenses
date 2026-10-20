@@ -24,7 +24,7 @@ import (
 // Runs under TestPostgresIntegration's dedicated-database guard; never against
 // the application database. Each helper uses its own comments/dates or IDs.
 func checkHTTPAcceptance(t *testing.T, s *postgres.Store) {
-	server := httptest.NewServer((&httpapi.API{Store: expensesvc.New(s), Timezone: "Asia/Ashgabat"}).Handler())
+	server := httptest.NewServer((&httpapi.API{Store: expensesvc.New(s), RequestTimeout: 5 * time.Second, Timezone: "Asia/Ashgabat"}).Handler())
 	defer server.Close()
 	request := func(method, path, body, origin string, want int) []byte {
 		t.Helper()

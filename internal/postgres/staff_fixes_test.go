@@ -36,7 +36,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		})
 		return e
 	}
-	handler := (&httpapi.API{Store: expensesvc.New(s), Timezone: "Asia/Ashgabat"}).Handler()
+	handler := (&httpapi.API{Store: expensesvc.New(s), RequestTimeout: 5 * time.Second, Timezone: "Asia/Ashgabat"}).Handler()
 	request := func(method, path, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")

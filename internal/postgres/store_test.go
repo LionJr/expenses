@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/LionJr/expenses/internal/expense"
 	"github.com/LionJr/expenses/internal/expensesvc"
@@ -221,7 +222,7 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 	})
 	t.Run("REST contract", func(t *testing.T) {
-		handler := (&httpapi.API{Store: expensesvc.New(s), Timezone: "Europe/Moscow"}).Handler()
+		handler := (&httpapi.API{Store: expensesvc.New(s), RequestTimeout: 5 * time.Second, Timezone: "Europe/Moscow"}).Handler()
 		request := func(method, path, body string) *httptest.ResponseRecorder {
 			t.Helper()
 			r := httptest.NewRequest(method, path, strings.NewReader(body))

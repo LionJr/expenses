@@ -8,9 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/LionJr/expenses/internal/expense"
@@ -25,6 +25,7 @@ type Repository interface {
 	Update(context.Context, int64, int64, expense.Patch) (expense.Expense, error)
 	Delete(context.Context, int64, int64) error
 }
+
 type API struct {
 	Store          Repository
 	Timezone       string
@@ -32,64 +33,51 @@ type API struct {
 }
 
 func (a *API) Handler() http.Handler {
-	requestTimeout := a.RequestTimeout
-	if requestTimeout <= 0 {
-		requestTimeout = 5 * time.Second
-	}
+	t, templateErr := template.ParseFS(web.Files, "templates/index.html")
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		t, err := template.ParseFS(web.Files, "templates/index.html")
-		if err != nil {
-			a.fail(w, err)
+		if templateErr != nil {
+			a.fail(w, templateErr)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err = t.Execute(w, a.Timezone); err != nil {
+		if err := t.Execute(w, a.Timezone); err != nil {
 			slog.Error("render panel", "error", err)
 		}
 	})
+	// For embed.FS, Sub only checks path syntax; the fixed "static" path is valid.
 	assets, _ := fs.Sub(web.Files, "static")
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
+
 	mux.HandleFunc("GET /api/users", a.users)
 	mux.HandleFunc("GET /api/expenses", a.list)
 	mux.HandleFunc("POST /api/expenses", a.create)
 	mux.HandleFunc("PATCH /api/expenses/{id}", a.patch)
 	mux.HandleFunc("DELETE /api/expenses/{id}", a.delete)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
-			defer cancel()
-			r = r.WithContext(ctx)
-			w.Header().Set("Cache-Control", "no-store")
-		}
-		if r.Method != "GET" && r.Method != "HEAD" {
-			if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host {
-				write(w, 403, map[string]any{"error": map[string]string{"message": "запрос с другого сайта запрещён"}})
-				return
-			}
-		}
-		mux.ServeHTTP(w, r)
-	})
+
+	handler := withSameOrigin(mux)
+	handler = withAPITimeout(handler, a.RequestTimeout)
+	return withSecurityHeaders(handler)
 }
+
 func (a *API) fail(w http.ResponseWriter, err error) {
-	status := 500
+	status := http.StatusInternalServerError
 	message := "внутренняя ошибка сервера"
-	if errors.Is(err, context.DeadlineExceeded) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
 		status = http.StatusGatewayTimeout
 		message = "Превышено время ожидания хранилища"
-	} else if errors.Is(err, expense.ErrInvalid) {
-		status = 400
-		message = err.Error()
-	} else if errors.Is(err, expense.ErrNotFound) {
-		status = 404
-		message = err.Error()
-	} else if errors.Is(err, expense.ErrConflict) {
+	case errors.Is(err, expense.ErrInvalid):
+		status = http.StatusBadRequest
+		message = "Некорректные данные запроса"
+	case errors.Is(err, expense.ErrNotFound):
+		status = http.StatusNotFound
+		message = "Расход не найден"
+	case errors.Is(err, expense.ErrConflict):
 		status = http.StatusConflict
-		message = err.Error()
-	} else {
+		message = "Конфликт изменения расхода. Обновите данные и повторите запрос."
+	default:
 		slog.Error("API request failed", "error", err)
 	}
 	write(w, status, map[string]any{"error": map[string]string{"message": message}})
@@ -100,7 +88,7 @@ func (a *API) users(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, map[string]any{"items": expensewire.FromUsers(v)})
+	write(w, http.StatusOK, map[string]any{"items": expensewire.FromUsers(v)})
 }
 func (a *API) list(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -128,7 +116,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, expensewire.FromPage(v))
+	write(w, http.StatusOK, expensewire.FromPage(v))
 }
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
 	var body expensewire.Input
@@ -142,7 +130,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 201, expensewire.FromExpense(v))
+	write(w, http.StatusCreated, expensewire.FromExpense(v))
 }
 func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 	id, e := pathID(r)
@@ -161,7 +149,7 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	write(w, 200, expensewire.FromExpense(v))
+	write(w, http.StatusOK, expensewire.FromExpense(v))
 }
 func (a *API) delete(w http.ResponseWriter, r *http.Request) {
 	id, e := pathID(r)
@@ -172,7 +160,7 @@ func (a *API) delete(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, e)
 		return
 	}
-	w.WriteHeader(204)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func write(w http.ResponseWriter, status int, v any) {
@@ -181,7 +169,8 @@ func write(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
-	if strings.Split(r.Header.Get("Content-Type"), ";")[0] != "application/json" {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
 		return expense.Invalid("нужен Content-Type application/json")
 	}
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
