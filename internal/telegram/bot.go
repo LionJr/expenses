@@ -28,6 +28,8 @@ type Storage interface {
 	SupersedeDelivery(context.Context, int64) error
 	PendingDeliveries(context.Context, int) ([]botstate.Delivery, error)
 	FailDelivery(context.Context, int64, int, bool, time.Time) error
+	DeliveryPending(context.Context, int64) (bool, error)
+	WithBotLease(context.Context, func(context.Context) error) error
 }
 
 type Responder interface {
@@ -35,12 +37,16 @@ type Responder interface {
 }
 
 type Bot struct {
-	Token   string
-	BaseURL string
-	HTTP    *http.Client
-	Allowed map[int64]bool
-	Store   Storage
-	Agent   Responder
+	Token         string
+	BaseURL       string
+	HTTP          *http.Client
+	Allowed       map[int64]bool
+	Store         Storage
+	Agent         Responder
+	PanelLink     func(context.Context, int64) (string, error)
+	PanelMasterID int64
+	// OnFatal is called with a sanitized APIError; it must not block the handler.
+	OnFatal func(error)
 }
 
 type User struct {
@@ -209,11 +215,28 @@ func (b *Bot) Handle(ctx context.Context, u Update) error {
 			}
 		}
 		switch m.Text {
+		case "/panel":
+			if user != b.PanelMasterID {
+				reply = "Веб-панель доступна только главному аккаунту семьи. Через бота вы можете записывать, просматривать и изменять только свои расходы."
+				break
+			}
+			if b.PanelLink == nil {
+				reply = "Вход в панель пока не настроен."
+				break
+			}
+			link, e := b.PanelLink(ctx, user)
+			if e != nil {
+				return e
+			}
+			reply = "Личная панель: " + link + "\nДля нового аккаунта ссылка настройки действует 15 минут. Не пересылайте её другим. Для входа нужны личный пароль и код аутентификатора."
 		case "":
 			reply = "Отправьте расход обычным текстом, например: кофе 350."
 		case "/start":
 			session = agent.Session{}
-			reply = "Привет! Записываю ваши расходы в рублях. Напишите «кофе 350», «такси 1200 вчера», «покажи траты за неделю» или «сколько потратил на еду в этом месяце»."
+			reply = "Привет! Записываю ваши расходы в рублях. Напишите «кофе 350», «такси 1200 вчера», «покажи траты за неделю» или «сколько потратил на еду в этом месяце». Через бота доступны только ваши расходы."
+			if user == b.PanelMasterID {
+				reply += " Команда /panel — вход главного аккаунта в семейную панель с двухфакторной защитой."
+			}
 		default:
 			// A queued reply may have been sent before an outbox retry delivered the
 			// new list. Require it to follow the prompt in the chat's message order.
@@ -306,12 +329,26 @@ func (b *Bot) deliver(ctx context.Context, d botstate.Delivery) error {
 	permanent := false
 	if errors.As(err, &api) {
 		code = api.Code
-		permanent = code >= http.StatusBadRequest && code < http.StatusInternalServerError && code != http.StatusTooManyRequests
+		permanent = code >= http.StatusBadRequest && code < http.StatusInternalServerError && code != http.StatusTooManyRequests && code != http.StatusRequestTimeout
 	}
-	delay := retryDelay(err)
+	delay := deliveryRetryDelay(d.Attempts, err)
 	if e := b.Store.FailDelivery(ctx, d.UpdateID, code, permanent, time.Now().Add(delay)); e != nil {
 		return e
 	}
-	slog.Warn("Telegram delivery failed", "update_id", d.UpdateID, "error_code", code, "attempt", d.Attempts+1, "terminal", permanent || d.Attempts+1 >= 3, "retry_after_ms", delay.Milliseconds())
+	slog.Warn("Telegram delivery failed", "update_id", d.UpdateID, "error_code", code, "attempt", d.Attempts+1, "terminal", permanent, "retry_after_ms", delay.Milliseconds())
 	return nil
+}
+
+// Keep transient replies in the outbox. Cap frequency, not the attempt count;
+// a short provider outage must not discard a committed operation's receipt.
+func deliveryRetryDelay(attempts int, err error) time.Duration {
+	delay := 5 * time.Second
+	for i := 0; i < attempts && delay < 15*time.Minute; i++ {
+		delay = min(delay*2, 15*time.Minute)
+	}
+	var api *APIError
+	if errors.As(err, &api) && api.RetryAfter > delay {
+		delay = api.RetryAfter
+	}
+	return delay
 }

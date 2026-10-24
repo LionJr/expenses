@@ -169,7 +169,7 @@ func TestNewRequestSupersedesOldChoicePrompt(t *testing.T) {
 		t.Fatal("superseded prompt was delivered or executed")
 	}
 }
-func TestMissingPromptMessageIDCannotActivateChoice(t *testing.T) {
+func TestMissingPromptMessageIDNeverActivatesChoiceDuringRetries(t *testing.T) {
 	store := newChoiceStore()
 	repo := &choiceRepo{}
 	provider := &choiceProvider{}
@@ -182,22 +182,27 @@ func TestMissingPromptMessageIDCannotActivateChoice(t *testing.T) {
 	if sessionAt(t, store).Choice.State != botstate.AwaitingDelivery || store.rows[10].state != "done" {
 		t.Fatal("missing Telegram ID activated prompt")
 	}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 4; i++ {
 		store.rows[10].retryAt = time.Now().Add(-time.Second)
 		if err := bot.deliverPending(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if store.rows[10].state != "failed" || sessionAt(t, store).Choice != nil || sessionAt(t, store).Pending != nil {
-		t.Fatal("failed prompt left an unreachable pending choice")
+	if store.rows[10].state != "done" || sessionAt(t, store).Choice.State != botstate.AwaitingDelivery {
+		t.Fatal("temporary missing-ID response discarded or activated the choice")
 	}
 	if err := bot.Handle(context.Background(), choiceUpdate(t, 11, 110, "вторую")); err != nil {
 		t.Fatal(err)
 	}
 	if repo.mutations != 0 || provider.calls != 0 {
-		t.Fatal("failed prompt allowed a stale choice")
+		t.Fatal("undelivered prompt allowed a stale choice")
 	}
-
+	if err := bot.Handle(context.Background(), choiceUpdate(t, 12, 111, "/start")); err != nil {
+		t.Fatal(err)
+	}
+	if store.rows[10].state != "superseded" || sessionAt(t, store).Choice != nil || sessionAt(t, store).Pending != nil {
+		t.Fatal("new conversation did not cancel undelivered choice")
+	}
 }
 
 func (*choiceRepo) Users(context.Context) ([]expense.User, error) { panic("unexpected users query") }

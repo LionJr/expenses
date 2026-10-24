@@ -17,6 +17,7 @@ import (
 )
 
 type memoryStore struct {
+	leaseMu      sync.Mutex
 	state, reply string
 	session      json.RawMessage
 	starts       int
@@ -25,6 +26,14 @@ type memoryStore struct {
 	errorCode    int
 	finishError  error
 	isChoice     bool
+}
+
+func (s *memoryStore) WithBotLease(ctx context.Context, work func(context.Context) error) error {
+	if !s.leaseMu.TryLock() {
+		return botstate.ErrWorkerBusy
+	}
+	defer s.leaseMu.Unlock()
+	return work(ctx)
 }
 
 func (s *memoryStore) UpdateUser(context.Context, int64, string, string) error { return nil }
@@ -167,11 +176,15 @@ func (s *memoryStore) PendingDeliveries(context.Context, int) ([]botstate.Delive
 	}
 	return nil, nil
 }
+
+func (s *memoryStore) DeliveryPending(context.Context, int64) (bool, error) {
+	return s.state == "done", nil
+}
 func (s *memoryStore) FailDelivery(_ context.Context, id int64, code int, permanent bool, retryAt time.Time) error {
 	s.attempts++
 	s.retryAt = retryAt
 	s.errorCode = code
-	if permanent || s.attempts >= 3 {
+	if permanent {
 		s.state = "failed"
 		if s.isChoice {
 			s.session = clearFailedChoice(s.session, id)

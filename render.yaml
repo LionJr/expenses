@@ -1,0 +1,39 @@
+# PostgreSQL is hosted separately on Neon's Free plan.
+services:
+  - type: web
+    name: family-expenses
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./deploy/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_ALLOWED_USER_IDS
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: PANEL_AUTH_KEY
+        sync: false
+      - key: PANEL_MASTER_USER_ID
+        sync: false
+      # Telegram permits only A-Z, a-z, 0-9, _ and - (Render's generated
+      # base64 secrets contain unsupported characters, so enter hex instead).
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_MODE
+        value: webhook
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LLM_TIMEOUT
+        value: 30s
+      - key: HTTP_REQUEST_TIMEOUT
+        value: 15s
+      - key: APP_TIMEZONE
+        value: Asia/Ashgabat

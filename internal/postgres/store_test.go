@@ -286,7 +286,9 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 	})
 	t.Run("committed bot mutation survives failed session persistence", func(t *testing.T) { checkBotRecovery(t, s) })
-	t.Run("durable delivery retry schedule and exhaustion", func(t *testing.T) { checkDeliveryOutbox(t, s) })
+	t.Run("durable delivery retry schedule survives temporary failures", func(t *testing.T) { checkDeliveryOutbox(t, s) })
+	t.Run("recover legacy failed replies safely", func(t *testing.T) { checkFailedDeliveryRecovery(t, s) })
+	t.Run("personal panel accounts MFA recovery and revocation", func(t *testing.T) { checkPersonalPanelAccounts(t, s) })
 
 	t.Run("reopen complete baseline without data loss", func(t *testing.T) { checkBaselineReopen(t, s, dsn) })
 
@@ -298,5 +300,6 @@ func TestPostgresIntegration(t *testing.T) {
 	t.Run("persisted conversation acceptance", func(t *testing.T) { checkRealConversation(t, s, dsn) })
 	t.Run("agent trust boundary acceptance", func(t *testing.T) { checkTrustBoundary(t, s) })
 	t.Run("staff audit regressions", func(t *testing.T) { checkStaffFixes(t, s) })
+	t.Run("webhook ownership across database pools", func(t *testing.T) { checkWebhookWorkerLease(t, s, dsn) })
 
 }

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход · Семейные расходы</title>
+  <link rel="stylesheet" href="/static/bootstrap.min.css"><link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/auth.css">
+  <script src="/static/auth.js" defer></script>
+</head>
+<body>
+<main class="container py-5 auth-container">
+  <a class="brand" href="/">Семейный счёт</a>
+  <h1 class="mt-4">Личный доступ</h1>
+  <div id="auth-notice" class="alert d-none" role="status" aria-live="polite"></div>
+  <section id="login-section" class="card p-4 mt-4">
+    <h2>Вход с двумя факторами</h2>
+    <p>Панель доступна только главному аккаунту семьи. Для первого входа отправьте боту <strong>/panel</strong> с этого аккаунта и откройте личную ссылку настройки. Остальные участники пользуются ботом для своих расходов.</p>
+    <form id="login-form">
+      <label class="form-label" for="login-user">Ваш числовой Telegram ID</label>
+      <input id="login-user" name="user_id" class="form-control mb-3" inputmode="numeric" autocomplete="username" required>
+      <label class="form-label" for="login-password">Личный пароль</label>
+      <input id="login-password" name="password" class="form-control mb-3" type="password" autocomplete="current-password" required maxlength="1024">
+      <label class="form-label" for="login-code">Код аутентификатора или резервный код</label>
+      <input id="login-code" name="code" class="form-control mb-3" autocomplete="one-time-code" required maxlength="32">
+      <p class="text-secondary small">Код из приложения меняется каждые 30 секунд и используется один раз. Пароль без кода не даёт доступа. Если только что использовали код, дождитесь следующего.</p>
+      <button class="btn btn-primary" type="submit">Войти</button>
+    </form>
+  </section>
+  <section id="enroll-section" class="card p-4 mt-4 d-none">
+    <h2 id="enroll-title">Настройка аутентификатора</h2>
+    <label class="form-label" for="enroll-user">Ваш личный логин (Telegram ID)</label>
+    <input id="enroll-user" class="form-control mb-3" readonly autocomplete="username">
+    <p>Добавьте эту учётную запись в приложение-аутентификатор: отсканируйте QR-код или введите ключ вручную. Сохраните ключ только у себя.</p>
+    <img id="totp-qr" width="240" height="240" alt="QR-код для добавления аккаунта в аутентификатор">
+    <label class="form-label mt-3" for="totp-secret">Ключ для ручного ввода</label>
+    <input id="totp-secret" class="form-control mb-3" readonly autocomplete="off">
+    <form id="enroll-form">
+      <div id="new-password-group">
+        <label class="form-label" for="enroll-password">Создайте личный пароль</label>
+        <input id="enroll-password" name="password" class="form-control mb-3" type="password" autocomplete="new-password" minlength="15" maxlength="1024">
+        <p class="text-secondary small">15–256 символов. Используйте уникальный пароль из менеджера паролей.</p>
+      </div>
+      <label class="form-label" for="enroll-code">Текущий шестизначный код нового аутентификатора</label>
+      <input id="enroll-code" name="code" class="form-control mb-3" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required maxlength="6">
+      <button class="btn btn-primary" type="submit">Подтвердить настройку</button>
+    </form>
+  </section>
+  <section id="recovery-section" class="card p-4 mt-4 d-none">
+    <h2>Сохраните резервные коды</h2>
+    <p>Каждый код можно использовать один раз вместо кода аутентификатора вместе с паролем. Сохраните их в менеджере паролей отдельно от телефона. После закрытия страницы этот список больше не показывается.</p>
+    <textarea id="recovery-codes" class="form-control mb-3" rows="10" readonly autocomplete="off" aria-label="Одноразовые резервные коды"></textarea>
+    <button id="download-recovery" class="btn btn-outline-primary mb-3" type="button">Скачать коды</button>
+    <a id="recovery-login" class="btn btn-primary" href="/auth">Коды сохранены — перейти ко входу</a>
+  </section>
+  <section id="security-section" class="card p-4 mt-4 d-none">
+    <h2>Безопасность аккаунта <span id="account-id"></span></h2>
+    <p>Для изменений подтвердите пароль и новый код аутентификатора либо неиспользованный резервный код.</p>
+    <form id="password-form" class="mb-4">
+      <h3>Изменить пароль</h3>
+      <label class="form-label" for="current-password">Текущий пароль</label>
+      <input id="current-password" name="password" class="form-control mb-3" type="password" autocomplete="current-password" required>
+      <label class="form-label" for="password-code">Код аутентификатора или резервный код</label>
+      <input id="password-code" name="code" class="form-control mb-3" autocomplete="one-time-code" required maxlength="32">
+      <label class="form-label" for="replacement-password">Новый пароль</label>
+      <input id="replacement-password" name="replacement" class="form-control mb-3" type="password" autocomplete="new-password" minlength="15" maxlength="1024" required>
+      <button class="btn btn-primary" type="submit">Сменить пароль и завершить все сеансы</button>
+    </form>
+    <form id="reset-mfa-form">
+      <h3>Заменить аутентификатор и резервные коды</h3>
+      <label class="form-label" for="reset-password">Текущий пароль</label>
+      <input id="reset-password" name="password" class="form-control mb-3" type="password" autocomplete="current-password" required>
+      <label class="form-label" for="reset-code">Код старого аутентификатора или резервный код</label>
+      <input id="reset-code" name="code" class="form-control mb-3" autocomplete="one-time-code" required maxlength="32">
+      <button class="btn btn-outline-primary" type="submit">Настроить новый аутентификатор</button>
+    </form>
+    <a class="mt-4" href="/">Вернуться к расходам</a>
+  </section>
+</main>
+</body>
+</html>

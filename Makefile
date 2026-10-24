@@ -10,7 +10,7 @@ test: ## Go-тесты; интеграционные требуют TEST_DATABAS
 	go test ./...
 
 test-web: ## JavaScript-тесты в Docker (Node на Mac не нужен)
-	docker run --rm --network none -v "$(CURDIR):/work:ro" -w /work node:24-alpine node --test web/app_test.js
+	docker run --rm --network none -v "$(CURDIR):/work:ro" -w /work node:24-alpine node --test web/app_test.js web/auth_test.js
 
 vet: ## Статическая проверка Go-кода
 	go vet ./...

@@ -21,6 +21,7 @@ function option(select, value, text) { const o = document.createElement('option'
 function notice(message, danger = false) { $('notice').textContent = message; $('notice').className = 'alert ' + (danger ? 'alert-danger' : 'alert-success'); }
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } });
+  if (response.status === 401) { location.replace('/auth'); throw new Error('Сеанс завершён. Войдите снова.'); }
   if (response.status === 204) return null;
   const result = await response.json();
   if (!response.ok) { const error = new Error(result.error?.message || 'Не удалось выполнить запрос.'); error.status = response.status; throw error; }
@@ -97,6 +98,10 @@ $('expense-form').onsubmit = async event => {
   finally { $('save').disabled = false; }
 };
 $('add').onclick = () => openEditor(); $('close').onclick = $('cancel').onclick = () => $('editor').close();
+$('logout').onclick = async () => {
+  try { await api('/auth/logout', { method: 'POST', body: '{}' }); location.replace('/auth'); }
+  catch (error) { notice(error.message, true); }
+};
 $('filters').onsubmit = event => { event.preventDefault(); offset = 0; load(); };
 $('filters').onreset = () => { offset = 0; setTimeout(load, 0); };
 $('prev').onclick = () => { offset = Math.max(0, offset - limit); load(); }; $('next').onclick = () => { offset += limit; load(); };

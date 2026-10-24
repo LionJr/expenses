@@ -12,3 +12,5 @@ bin
 *.backup
 /backups/
 .DS_Store
+/Screenshot*.png
+/family-expenses-recovery.txt

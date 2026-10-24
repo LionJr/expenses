@@ -48,10 +48,14 @@ func TestDeliveryPermanentFailureIsTerminal(t *testing.T) {
 		})
 	}
 }
-func TestTransientDeliveryRetriesAreBounded(t *testing.T) {
+func TestTransientDeliverySurvivesRepeatedFailuresAndReusesSavedReply(t *testing.T) {
 	sends := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sends++
+		if sends == 7 {
+			fmt.Fprint(w, `{"ok":true,"result":{}}`)
+			return
+		}
 		w.WriteHeader(http.StatusServiceUnavailable)
 		fmt.Fprint(w, `{"ok":false,"error_code":503}`)
 	}))
@@ -64,13 +68,19 @@ func TestTransientDeliveryRetriesAreBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Drive scheduled outbox attempts explicitly; this fake does not wait on clocks.
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 5; i++ {
 		if err := b.deliverPending(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if store.state != "failed" || store.attempts != 3 || sends != 3 || a.calls != 1 {
-		t.Fatal("retry limit or reply reuse failed")
+	if store.state != "done" || store.attempts != 6 || sends != 6 || a.calls != 1 {
+		t.Fatal("transient errors discarded the saved reply")
+	}
+	if err := b.deliverPending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.state != "sent" || sends != 7 || a.calls != 1 {
+		t.Fatal("recovery did not deliver the saved reply exactly once")
 	}
 }
 func TestRetryAfterIsPersistedWithoutSleepingPolling(t *testing.T) {
@@ -98,6 +108,26 @@ func TestRetryAfterIsPersistedWithoutSleepingPolling(t *testing.T) {
 		t.Fatal("duplicate update bypassed retry schedule")
 	}
 }
+
+func TestDeliveryRetryBackoffAndProviderMinimum(t *testing.T) {
+	for _, tc := range []struct {
+		attempts int
+		minimum  time.Duration
+		want     time.Duration
+	}{
+		{0, 0, 5 * time.Second},
+		{1, 0, 10 * time.Second},
+		{2, 0, 20 * time.Second},
+		{8, 0, 15 * time.Minute},
+		{1000000, 0, 15 * time.Minute},
+		{0, time.Hour, time.Hour},
+		{8, time.Second, 15 * time.Minute},
+	} {
+		if got := deliveryRetryDelay(tc.attempts, &APIError{Code: 429, RetryAfter: tc.minimum}); got != tc.want {
+			t.Fatalf("attempts=%d minimum=%s got=%s want=%s", tc.attempts, tc.minimum, got, tc.want)
+		}
+	}
+}
 func TestPollingFatalErrorsSurface(t *testing.T) {
 	for _, code := range []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusConflict} {
 		t.Run(fmt.Sprint(code), func(t *testing.T) {
@@ -117,10 +147,19 @@ func TestPollingFatalErrorsSurface(t *testing.T) {
 }
 
 type updateStore struct {
+	leaseMu  sync.Mutex
 	mu       sync.Mutex
 	sessions map[int64]json.RawMessage
 	rows     map[int64]*memoryStore
 	users    map[int64]int64
+}
+
+func (s *updateStore) WithBotLease(ctx context.Context, work func(context.Context) error) error {
+	if !s.leaseMu.TryLock() {
+		return botstate.ErrWorkerBusy
+	}
+	defer s.leaseMu.Unlock()
+	return work(ctx)
 }
 
 func (s *updateStore) UpdateUser(context.Context, int64, string, string) error { return nil }
@@ -195,6 +234,12 @@ func (s *updateStore) PendingDeliveries(context.Context, int) ([]botstate.Delive
 		}
 	}
 	return out, nil
+}
+
+func (s *updateStore) DeliveryPending(_ context.Context, id int64) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rows[id] != nil && s.rows[id].state == "done", nil
 }
 func TestUndeliverableChatDoesNotBlockOtherUserOrOffset(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

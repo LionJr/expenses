@@ -148,6 +148,9 @@ func checkDeliveryOutbox(t *testing.T, s *postgres.Store) {
 	if contains() {
 		t.Fatal("Retry-After deadline ignored")
 	}
+	if pending, err := s.DeliveryPending(ctx, id); err != nil || !pending {
+		t.Fatalf("webhook must not acknowledge future retry: pending=%v error=%v", pending, err)
+	}
 	if err := s.FailDelivery(ctx, id, http.StatusServiceUnavailable, false, time.Now().Add(-time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -157,16 +160,22 @@ func checkDeliveryOutbox(t *testing.T, s *postgres.Store) {
 	if err := s.FailDelivery(ctx, id, http.StatusServiceUnavailable, false, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if contains() {
-		t.Fatal("exhausted retries still pending")
+	if !contains() {
+		t.Fatal("three temporary errors discarded the saved reply")
+	}
+	if pending, err := s.DeliveryPending(ctx, id); err != nil || !pending {
+		t.Fatalf("temporary failure must remain retryable: pending=%v error=%v", pending, err)
 	}
 	state, _, err := s.StartUpdate(ctx, id, 101)
-	if err != nil || state != "failed" {
-		t.Fatalf("terminal state=%s err=%v", state, err)
+	if err != nil || state != "done" {
+		t.Fatalf("pending state=%s err=%v", state, err)
 	}
 	var attempts, code int
 	if err = postgres.DBForTest(s).QueryRowContext(ctx, "SELECT delivery_attempts,last_error_code FROM telegram_updates WHERE update_id=$1", id).Scan(&attempts, &code); err != nil || attempts != 3 || code != http.StatusServiceUnavailable {
 		t.Fatal("delivery metadata not persisted")
+	}
+	if err := s.MarkSent(ctx, id); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -43,3 +43,5 @@ go.work.sum
 *.backup
 /backups/
 .DS_Store
+/Screenshot*.png
+/family-expenses-recovery.txt
