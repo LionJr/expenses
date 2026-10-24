@@ -30,7 +30,7 @@ services:
       - key: LLM_BASE_URL
         value: https://api.groq.com/openai/v1
       - key: LLM_MODEL
-        value: llama-3.3-70b-versatile
+        value: openai/gpt-oss-120b
       - key: LLM_TIMEOUT
         value: 30s
       - key: HTTP_REQUEST_TIMEOUT

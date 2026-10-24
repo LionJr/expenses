@@ -33,6 +33,7 @@ type RequestDraft struct {
 	Text        string             `json:"text"`
 	Field       string             `json:"field"`
 	Permissions requestPermissions `json:"permissions"`
+	SpentAt     string             `json:"spent_at,omitempty"`
 }
 
 type EditDraft struct {

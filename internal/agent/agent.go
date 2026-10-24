@@ -58,9 +58,14 @@ func (a *Agent) Reply(ctx context.Context, user, update int64, text string, s Se
 	if request.handled {
 		return request.answer, request.session, nil
 	}
-	request, err = a.resolveRequest(ctx, user, update, request.text, request.session, request.permission, started)
+	if request.create == nil {
+		request, err = a.resolveRequest(ctx, user, update, request.text, request.session, request.permission, started)
+	}
 	if err != nil || request.handled {
 		return request.answer, request.session, err
+	}
+	if request.create != nil {
+		return a.createEntry(ctx, user, update, request, started)
 	}
 	return a.runModel(ctx, user, update, request.text, request.session, request.permission, request.selected, started)
 }

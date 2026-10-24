@@ -165,6 +165,9 @@ func (a *Agent) executeModelTool(ctx context.Context, turn *modelTurn, call Tool
 		args, _ := strictArgs(a.Currency, call)
 		if args.Field != "request" && args.Field != "single_expense" {
 			turn.session.Request = &RequestDraft{Text: turn.text, Field: args.Field, Permissions: turn.permission}
+			if args.Field == "category" {
+				turn.session.Request.SpentAt = a.entryDate()
+			}
 		}
 		return true, nil
 	}

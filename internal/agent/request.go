@@ -14,6 +14,7 @@ type preparedRequest struct {
 	selected   int64
 	answer     string
 	handled    bool
+	create     *expense.Input
 }
 
 func prepareRequest(c expense.Currency, text string, s Session) preparedRequest {
@@ -55,6 +56,19 @@ func prepareRequest(c expense.Currency, text string, s Session) preparedRequest 
 		if incoming.Mutation == "" && !incoming.ReadOnly {
 			permission := draft.Permissions
 			value := strings.TrimSpace(text)
+			if draft.Field == "category" && permission.Mutation == toolCreateExpense && !permission.ReadOnly {
+				if input, ok := simpleEntry(draft.Text); ok {
+					category := strings.ToLower(value)
+					if !expense.Category(category) {
+						answer, _ := clarification(c, "category")
+						remember(&s, text, answer)
+						return preparedRequest{session: s, answer: answer, handled: true}
+					}
+					input.Category, input.SpentAt = category, draft.SpentAt
+					s.Request = nil
+					return preparedRequest{text: draft.Text + "\nКатегория: " + category, session: s, permission: permission, create: &input}
+				}
+			}
 			if draft.Field == "amount" {
 				if _, err := expense.ParseAmount(value); err != nil {
 					answer := "Введите положительную сумму в " + c.Code() + ", до двух знаков после запятой, например 350,50. Отменить — «отмена»."

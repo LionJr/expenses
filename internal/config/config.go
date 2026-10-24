@@ -44,7 +44,7 @@ func initialize() (Config, error) {
 		TelegramURL:   "https://api.telegram.org",
 		LLMURL:        env("LLM_BASE_URL", "https://api.groq.com/openai/v1"),
 		LLMKey:        os.Getenv("LLM_API_KEY"),
-		LLMModel:      env("LLM_MODEL", "llama-3.3-70b-versatile"),
+		LLMModel:      env("LLM_MODEL", "openai/gpt-oss-120b"),
 		TelegramMode:  env("TELEGRAM_MODE", "polling"),
 		WebhookSecret: os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
 		PublicURL:     strings.TrimRight(env("PUBLIC_BASE_URL", env("RENDER_EXTERNAL_URL", "http://localhost:"+env("PORT", "8080"))), "/"),

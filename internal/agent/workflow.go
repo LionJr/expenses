@@ -203,5 +203,14 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		return preparedRequest{session: s, answer: answer, handled: true}, nil
 	}
 
-	return preparedRequest{text: text, session: s, permission: permission, selected: selected}, nil
+	request := preparedRequest{text: text, session: s, permission: permission, selected: selected}
+	if permission.Mutation == toolCreateExpense && !permission.ReadOnly {
+		if input, ok := simpleEntry(text); ok {
+			if category := entryCategory(input.Comment); category != "" {
+				input.Category = category
+				request.create = &input
+			}
+		}
+	}
+	return request, nil
 }
