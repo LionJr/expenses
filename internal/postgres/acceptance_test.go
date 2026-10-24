@@ -320,7 +320,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claim := "Добавил кофе: 99999 рублей."
+	claim := "Добавил кофе: 99999 манатов."
 	provider.responses = []agent.Message{{Content: claim}, {Content: claim}}
 	if reply := send("кофе 350"); strings.Contains(reply, "99999") || strings.Contains(reply, "Добавил") {
 		t.Fatal("unbacked create shown: " + reply)
@@ -333,7 +333,7 @@ func checkTrustBoundary(t *testing.T, s *postgres.Store) {
 	if err != nil || strings.Contains(string(data), claim) {
 		t.Fatal("unbacked create persisted in session")
 	}
-	claim = "Итого: 99999 рублей."
+	claim = "Итого: 99999 манатов."
 	provider.responses = []agent.Message{{Content: claim}, {Content: claim}}
 	if reply := send("сколько потратил на еду за октябрь 2043"); strings.Contains(reply, "99999") {
 		t.Fatal("unbacked summary shown: " + reply)

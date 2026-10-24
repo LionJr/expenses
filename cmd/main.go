@@ -42,15 +42,18 @@ func run() error {
 	startup, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	store, err := postgres.Open(startup, cfg.DatabaseURL, cfg.Allowed)
+	store, err := postgres.Open(startup, cfg.DatabaseURL, cfg.Allowed, cfg.Currency)
 	if err != nil {
 		// Driver parse errors can include the full DSN, including credentials.
+		if errors.Is(err, postgres.ErrCurrencyMismatch) {
+			return err
+		}
 		return fmt.Errorf("database startup failed; check DATABASE_URL, connectivity and schema")
 	}
 	defer store.Close()
 
 	expenses := expensesvc.New(store)
-	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String(), RequestTimeout: cfg.HTTPRequestTimeout}
+	api := &httpapi.API{Store: expenses, Timezone: cfg.Location.String(), RequestTimeout: cfg.HTTPRequestTimeout, Currency: cfg.Currency}
 	accounts, err := panelauth.New(store, cfg.PublicURL, cfg.PanelAuthKey, cfg.PanelMasterID)
 	if err != nil {
 		return err
@@ -97,6 +100,7 @@ func run() error {
 			},
 			Location: cfg.Location,
 			Timeout:  cfg.LLMTimeout,
+			Currency: cfg.Currency,
 		}
 		bot := &telegram.Bot{
 			BaseURL:       cfg.TelegramURL,
@@ -107,6 +111,7 @@ func run() error {
 			Agent:         a,
 			PanelLink:     accounts.Invite,
 			PanelMasterID: cfg.PanelMasterID,
+			Currency:      cfg.Currency,
 		}
 		if cfg.TelegramMode == "webhook" {
 			lifecycle := &webhookLifecycle{ready: &ready, errors: botErrors}

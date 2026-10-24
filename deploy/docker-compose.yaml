@@ -37,6 +37,7 @@ services:
       LLM_MODEL: ${LLM_MODEL:-llama-3.3-70b-versatile}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-30s}
       APP_TIMEZONE: ${APP_TIMEZONE:-Europe/Moscow}
+      APP_CURRENCY: ${APP_CURRENCY:-TMT}
     healthcheck:
       test: ["CMD", "wget", "-q", "-T", "6", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 15s

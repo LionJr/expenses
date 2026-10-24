@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,8 +33,11 @@ func run(id int64) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	store, err := postgres.Open(ctx, cfg.DatabaseURL, cfg.Allowed)
+	store, err := postgres.Open(ctx, cfg.DatabaseURL, cfg.Allowed, cfg.Currency)
 	if err != nil {
+		if errors.Is(err, postgres.ErrCurrencyMismatch) {
+			return err
+		}
 		return fmt.Errorf("database unavailable; check connection settings")
 	}
 	defer store.Close()

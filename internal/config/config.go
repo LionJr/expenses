@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata"
+
+	"github.com/LionJr/expenses/internal/expense"
 )
 
 type Config struct {
@@ -23,6 +25,7 @@ type Config struct {
 	PanelAuthKey                                          string
 	PanelMasterID                                         int64
 	IsRender                                              bool
+	Currency                                              expense.Currency
 }
 
 func Load() (Config, error) {
@@ -49,6 +52,10 @@ func initialize() (Config, error) {
 		IsRender:      os.Getenv("RENDER") == "true" || os.Getenv("RENDER_EXTERNAL_URL") != "",
 	}
 	var err error
+	c.Currency, err = expense.ParseCurrency(env("APP_CURRENCY", "TMT"))
+	if err != nil {
+		return c, err
+	}
 	c.Location, err = time.LoadLocation(env("APP_TIMEZONE", "Europe/Moscow"))
 	if err != nil {
 		return c, fmt.Errorf("APP_TIMEZONE: %w", err)
@@ -83,6 +90,9 @@ func initialize() (Config, error) {
 	return c, nil
 }
 func validate(c Config) error {
+	if _, err := expense.ParseCurrency(c.Currency.Code()); err != nil {
+		return err
+	}
 	if c.TelegramMode != "" && c.TelegramMode != "polling" && c.TelegramMode != "webhook" {
 		return fmt.Errorf("TELEGRAM_MODE must be polling or webhook")
 	}

@@ -301,5 +301,6 @@ func TestPostgresIntegration(t *testing.T) {
 	t.Run("agent trust boundary acceptance", func(t *testing.T) { checkTrustBoundary(t, s) })
 	t.Run("staff audit regressions", func(t *testing.T) { checkStaffFixes(t, s) })
 	t.Run("webhook ownership across database pools", func(t *testing.T) { checkWebhookWorkerLease(t, s, dsn) })
+	t.Run("database currency binding and legacy safety", func(t *testing.T) { checkCurrencyBinding(t, s, dsn) })
 
 }

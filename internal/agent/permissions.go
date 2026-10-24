@@ -36,7 +36,7 @@ var (
 	simpleDescription = regexp.MustCompile(`^[\p{L}][\p{L}\s]{0,199}$`)
 )
 
-func permissionsFor(text string) requestPermissions {
+func permissionsFor(c expense.Currency, text string) requestPermissions {
 	if conditionalIntent.MatchString(text) || negatedIntent.MatchString(text) {
 		return requestPermissions{ReadOnly: true}
 	}
@@ -79,7 +79,8 @@ func permissionsFor(text string) requestPermissions {
 		}
 		return requestPermissions{Mutation: toolUpdateExpense, Fields: fields}
 	}
-	if add || expenseEntry.MatchString(text) {
+	_, compactEntry := c.EntryAmount(text)
+	if add || compactEntry {
 		return requestPermissions{Mutation: toolCreateExpense}
 	}
 	return requestPermissions{}
@@ -98,15 +99,15 @@ func (p requestPermissions) authorize(name string, args arguments) error {
 	return nil
 }
 
-func permittedTools(p requestPermissions) []Tool {
+func permittedTools(c expense.Currency, p requestPermissions) []Tool {
 	var result []Tool
-	for _, t := range Tools() {
+	for _, t := range Tools(c) {
 		if isMutation(t.Function.Name) && (p.ReadOnly || t.Function.Name != p.Mutation) {
 			continue
 		}
 		if t.Function.Name == toolUpdateExpense {
 			properties := t.Function.Parameters["properties"].(map[string]any)
-			for key, flag := range map[string]uint8{"amount_rubles": fieldAmount, "spent_at": fieldDate, "category": fieldCategory, "comment": fieldComment} {
+			for key, flag := range map[string]uint8{"amount_decimal": fieldAmount, "spent_at": fieldDate, "category": fieldCategory, "comment": fieldComment} {
 				if p.Fields&flag == 0 {
 					delete(properties, key)
 				}

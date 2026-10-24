@@ -37,3 +37,5 @@ services:
         value: 15s
       - key: APP_TIMEZONE
         value: Asia/Ashgabat
+      - key: APP_CURRENCY
+        sync: false

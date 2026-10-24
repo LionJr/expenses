@@ -149,7 +149,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		}
 	})
 	t.Run("permanent bad argument does not block next participant", func(t *testing.T) {
-		provider := &scriptedProvider{responses: []agent.Message{toolMessage("create_expense", `{"amount_rubles":"1","category":"еда","spent_at":"2045-10-19","comment":"bad\u0000comment"}`), toolMessage("clarify_request", `{"field":"request"}`)}}
+		provider := &scriptedProvider{responses: []agent.Message{toolMessage("create_expense", `{"amount_decimal":"1","category":"еда","spent_at":"2045-10-19","comment":"bad\u0000comment"}`), toolMessage("clarify_request", `{"field":"request"}`)}}
 		first := privateUpdate(t, 19101, 19101, "кофе 1")
 		second := privateUpdate(t, 19102, 19102, "/start")
 		second.Message.From.ID, second.Message.Chat.ID = 202, 202
@@ -199,7 +199,7 @@ func checkStaffFixes(t *testing.T, s *postgres.Store) {
 		}
 	})
 	t.Run("create clarification is persisted between messages", func(t *testing.T) {
-		provider := &scriptedProvider{responses: []agent.Message{toolMessage("clarify_request", `{"field":"amount"}`), toolMessage("create_expense", `{"amount_rubles":"350.50","category":"еда","spent_at":"2045-10-19","comment":"create-draft-fixed"}`)}}
+		provider := &scriptedProvider{responses: []agent.Message{toolMessage("clarify_request", `{"field":"amount"}`), toolMessage("create_expense", `{"amount_decimal":"350.50","category":"еда","spent_at":"2045-10-19","comment":"create-draft-fixed"}`)}}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprint(w, `{"ok":true,"result":{"message_id":22000}}`)
 		}))

@@ -2,17 +2,18 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="app-timezone" content="{{.}}">
+  <meta name="app-timezone" content="{{.Timezone}}">
+  <meta name="app-currency" content="{{.Currency.Code}}">
   <title>Семейные расходы</title>
   <link rel="stylesheet" href="/static/bootstrap.min.css"><link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-<header class="topbar"><div class="container d-flex justify-content-between align-items-center"><a class="brand" href="/">Семейный счёт<span>УЧЁТ РАСХОДОВ</span></a><div class="d-flex align-items-center gap-3"><a href="/auth/security">Безопасность</a><button class="btn btn-light btn-sm" id="logout" type="button">Выйти</button><span class="currency">₽ &nbsp; Российский рубль</span></div></div></header>
+<header class="topbar"><div class="container d-flex justify-content-between align-items-center"><a class="brand" href="/">Семейный счёт<span>УЧЁТ РАСХОДОВ</span></a><div class="d-flex align-items-center gap-3"><a href="/auth/security">Безопасность</a><button class="btn btn-light btn-sm" id="logout" type="button">Выйти</button><span class="currency">{{.Currency.Code}} &nbsp; {{.Currency.Name}}</span></div></div></header>
 <main class="container py-5">
   <div class="d-flex justify-content-between align-items-center gap-3 mb-4"><div><p class="eyebrow">СЕМЬЯ · ФИНАНСЫ</p><h1>Расходы под рукой</h1><p class="text-secondary mb-0">Все покупки семьи в одном месте.</p></div><button class="btn btn-primary" id="add">＋ Добавить расход</button></div>
   <div id="notice" class="alert d-none" role="status" aria-live="polite"></div>
-  <section class="summary mb-4" aria-label="Итого"><div><span>Всего за выбранный период</span><strong id="total-amount">0,00 ₽</strong></div><div><span>Расходов</span><strong id="total-count">0</strong></div></section>
+  <section class="summary mb-4" aria-label="Итого"><div><span>Всего за выбранный период</span><strong id="total-amount">0,00 {{.Currency.Code}}</strong></div><div><span>Расходов</span><strong id="total-count">0</strong></div></section>
   <section class="card p-4 mb-4"><form id="filters" class="row g-3 align-items-end">
     <div class="col-xl-3"><label for="filter-user" class="form-label">Участник</label><select id="filter-user" name="user_id" class="form-select"><option value="">Вся семья</option></select></div>
     <div class="col-xl-3"><label for="filter-category" class="form-label">Категория</label><select id="filter-category" name="category" class="form-select"><option value="">Все категории</option></select></div>
@@ -25,13 +26,13 @@
     <p id="empty" class="text-center text-secondary py-5 d-none">Пока нет расходов. Добавьте первый расход здесь или напишите боту.</p>
     <div class="p-3 d-flex justify-content-between align-items-center"><span id="page-label" class="text-secondary small"></span><div class="d-flex gap-2"><button id="prev" class="btn btn-light btn-sm">← Назад</button><button id="next" class="btn btn-light btn-sm">Далее →</button></div></div>
   </section>
-  <p class="footer-note">Суммы в рублях · Часовой пояс: <span id="timezone"></span></p>
+  <p class="footer-note">Валюта: {{.Currency.Code}} · Часовой пояс: <span id="timezone"></span></p>
 </main>
 <dialog id="editor"><form id="expense-form">
   <div class="d-flex justify-content-between align-items-center mb-4"><h2 id="editor-title">Новый расход</h2><button type="button" id="close" class="btn btn-light" aria-label="Закрыть">×</button></div>
   <div id="form-error" class="alert alert-danger d-none" role="alert"></div>
   <div class="mb-3"><label class="form-label" for="edit-user">Участник</label><select id="edit-user" class="form-select" required></select></div>
-  <div class="row g-3 mb-3"><div class="col-12 col-sm-6"><label class="form-label" for="edit-amount">Сумма, ₽</label><input id="edit-amount" class="form-control" inputmode="decimal" placeholder="350,00" required maxlength="24"></div><div class="col-12 col-sm-6"><label class="form-label" for="edit-date">Дата</label><input id="edit-date" class="form-control" type="date" required></div></div>
+  <div class="row g-3 mb-3"><div class="col-12 col-sm-6"><label class="form-label" for="edit-amount">Сумма, {{.Currency.Code}}</label><input id="edit-amount" class="form-control" inputmode="decimal" placeholder="350,00" required maxlength="24"></div><div class="col-12 col-sm-6"><label class="form-label" for="edit-date">Дата</label><input id="edit-date" class="form-control" type="date" required></div></div>
   <div class="mb-3"><label class="form-label" for="edit-category">Категория</label><select id="edit-category" class="form-select" required></select></div>
   <div class="mb-4"><label class="form-label" for="edit-comment">Комментарий <span class="text-secondary">· необязательно</span></label><textarea id="edit-comment" class="form-control" maxlength="1000" rows="3" placeholder="Например, кофе по дороге на работу"></textarea></div>
   <div class="d-flex justify-content-end gap-2"><button type="button" id="cancel" class="btn btn-light">Отмена</button><button id="save" type="submit" class="btn btn-primary">Сохранить</button></div>

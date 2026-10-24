@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/LionJr/expenses/internal/expense"
 	"github.com/LionJr/expenses/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
@@ -32,7 +33,18 @@ type queryer interface {
 	SelectContext(context.Context, any, string, ...any) error
 }
 
-func Open(ctx context.Context, dsn string, ids []int64) (*Store, error) {
+func Open(ctx context.Context, dsn string, ids []int64, configured ...expense.Currency) (*Store, error) {
+	currency := expense.TMT
+	if len(configured) > 1 {
+		return nil, fmt.Errorf("configure one application currency")
+	}
+	if len(configured) == 1 {
+		var err error
+		currency, err = expense.ParseCurrency(configured[0].Code())
+		if err != nil {
+			return nil, err
+		}
+	}
 	db, err := sqlx.Open("pgx", dsn)
 	if err != nil {
 		return nil, err
@@ -59,6 +71,10 @@ func Open(ctx context.Context, dsn string, ids []int64) (*Store, error) {
 		return nil, fmt.Errorf("database connection: %w", err)
 	}
 	if err = s.migrate(ctx, ids); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err = s.bindCurrency(ctx, currency); err != nil {
 		db.Close()
 		return nil, err
 	}

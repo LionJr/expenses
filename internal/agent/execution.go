@@ -13,12 +13,12 @@ import (
 
 type arguments struct {
 	Field     string  `json:"field"`
-	Amount    *string `json:"amount_rubles"`
+	Amount    *string `json:"amount_decimal"`
 	Category  *string `json:"category"`
 	Date      *string `json:"spent_at"`
 	Comment   *string `json:"comment"`
 	ID        string  `json:"id"`
-	Expected  *string `json:"expected_amount_rubles"`
+	Expected  *string `json:"expected_amount_decimal"`
 	From      string  `json:"date_from"`
 	To        string  `json:"date_to"`
 	Search    string  `json:"search"`
@@ -26,14 +26,14 @@ type arguments struct {
 	Selection string  `json:"selection"`
 }
 
-func strictArgs(call ToolCall) (arguments, error) {
+func strictArgs(c expense.Currency, call ToolCall) (arguments, error) {
 	var p arguments
 	var shape map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &shape); err != nil || shape == nil {
 		return p, expense.Invalid("аргументы должны быть объектом")
 	}
 	var schema map[string]any
-	for _, t := range Tools() {
+	for _, t := range Tools(c) {
 		if t.Function.Name == call.Function.Name {
 			schema = t.Function.Parameters
 		}
@@ -85,7 +85,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 	if multipleExpenseIDs(text) {
 		return nil, expense.Invalid("укажите только один расход за один запрос")
 	}
-	p, err := strictArgs(call)
+	p, err := strictArgs(a.Currency, call)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		return nil, err
 	}
 	if name == toolClarifyRequest {
-		question, err := clarification(p.Field)
+		question, err := clarification(a.Currency, p.Field)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +150,7 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 	}
 	var amount *int64
 	if p.Amount != nil {
-		n, e := expense.ParseRubles(*p.Amount)
+		n, e := expense.ParseAmount(*p.Amount)
 		if e != nil {
 			return nil, e
 		}
@@ -188,11 +188,11 @@ func (a *Agent) executeAuthorized(ctx context.Context, user, update int64, call 
 		}
 
 		expected := p.Expected
-		if token, ok := previousAmount(text); ok {
+		if token, ok := previousAmount(a.Currency, text); ok {
 			expected = &token
 		}
 		if expected != nil {
-			n, e := expense.ParseRubles(*expected)
+			n, e := expense.ParseAmount(*expected)
 			if e != nil {
 				return nil, e
 			}

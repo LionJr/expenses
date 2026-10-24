@@ -145,6 +145,19 @@ func TestPanelConcurrentRendering(t *testing.T) {
 	requests.Wait()
 }
 
+func TestPanelCurrencyComesFromConfiguration(t *testing.T) {
+	for _, code := range []expense.Currency{expense.TMT, expense.RUB, expense.USD, expense.EUR, expense.AZN} {
+		handler := (&API{Timezone: "Asia/Ashgabat", Currency: code}).Handler()
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+		for _, want := range []string{`name="app-currency" content="` + code.Code() + `"`, code.Name(), "Сумма, " + code.Code(), "0,00 " + code.Code()} {
+			if w.Code != 200 || !strings.Contains(w.Body.String(), want) {
+				t.Fatalf("currency=%s missing %q: status=%d", code, want, w.Code)
+			}
+		}
+	}
+}
+
 func TestFailureDoesNotExposeErrorDetails(t *testing.T) {
 	for _, test := range []struct {
 		err    error

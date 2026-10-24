@@ -37,7 +37,7 @@ func TestMultipleExplicitIDsCannotReachModelOrStorage(t *testing.T) {
 
 func TestMergedClarificationCannotIntroduceSecondID(t *testing.T) {
 	repo, llm := &fakeRepo{}, &script{}
-	session := Session{Request: &RequestDraft{Text: "измени дату расхода #14", Field: "date", Permissions: permissionsFor("измени дату расхода #14")}}
+	session := Session{Request: &RequestDraft{Text: "измени дату расхода #14", Field: "date", Permissions: permissionsFor(expense.TMT, "измени дату расхода #14")}}
 	reply, session, err := newAgent(repo, llm).Reply(context.Background(), 42, 2, "вчера #7", persistedSession(t, session))
 	if err != nil || !strings.Contains(reply, "Укажите только один расход") || session.Request != nil || len(llm.seen) != 0 || repo.mutationAttempts != 0 {
 		t.Fatalf("second ID accepted through clarification: %q %v", reply, err)
@@ -45,7 +45,7 @@ func TestMergedClarificationCannotIntroduceSecondID(t *testing.T) {
 }
 
 func TestToolBoundaryRejectsMultipleExplicitTargets(t *testing.T) {
-	for _, tool := range []Message{call("list_expenses", `{}`), call("delete_expense", `{"id":"14"}`), call("update_expense", `{"id":"14","amount_rubles":"500"}`)} {
+	for _, tool := range []Message{call("list_expenses", `{}`), call("delete_expense", `{"id":"14"}`), call("update_expense", `{"id":"14","amount_decimal":"500"}`)} {
 		repo := &fakeRepo{}
 		session := Session{Candidates: []expense.Expense{{ID: 14, UserID: 42, Amount: 100}}, CandidateTotal: 1}
 		mutated := false

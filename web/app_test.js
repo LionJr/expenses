@@ -6,14 +6,14 @@ const vm = require('node:vm');
 
 // Exercise the actual form handler with a small DOM/HTTP adapter. This checks
 // submitted payloads and editor state; layout and browser APIs still need a UI run.
-async function panel(patchResponse) {
+async function panel(patchResponse, currency = 'TMT') {
   const nodes = new Map(), requests = [];
   const element = () => ({ value: '', disabled: false, textContent: '', className: '', open: false,
     classList: { add() {}, remove() {}, toggle() {} }, append() {}, replaceChildren() {},
     reset() {}, focus() {}, showModal() { this.open = true; }, close() { this.open = false; } });
   const get = id => { if (!nodes.has(id)) nodes.set(id, element()); return nodes.get(id); };
   const context = vm.createContext({
-    document: { getElementById: get, querySelector: () => ({ content: 'Asia/Ashgabat' }), createElement: element },
+    document: { getElementById: get, querySelector: selector => ({ content: selector === 'meta[name="app-currency"]' ? currency : 'Asia/Ashgabat' }), createElement: element },
     URLSearchParams, FormData: class { *[Symbol.iterator]() {} }, setTimeout,
     fetch: async (path, options = {}) => {
       if (options.method === 'PATCH' || options.method === 'POST') {
@@ -29,6 +29,31 @@ async function panel(patchResponse) {
 }
 
 const original = { id: '14', user_id: '101', amount: '10000', category: 'жильё', spent_at: '2026-10-19', comment: 'старый', version: '7' };
+
+test('TMT formatting and decimal entry preserve integer precision', async () => {
+  const p = await panel();
+  assert.equal(p.context.money('1234'), '12,34 TMT');
+  assert.equal(p.context.money('1'), '0,01 TMT');
+  assert.equal(p.context.money('9223372036854775807').replace(/\s/g, ''), '92233720368547758,07TMT');
+  assert.equal(p.context.amountToMinorUnits('12,34'), '1234');
+  assert.equal(p.context.amountToMinorUnits('92233720368547758.07'), '9223372036854775807');
+  for (const value of ['0', '-1', '1.001', '92233720368547758.08']) {
+    assert.throws(() => p.context.amountToMinorUnits(value));
+  }
+});
+
+test('all configured currencies use the same exact amount representation', async () => {
+  for (const code of ['TMT', 'RUB', 'USD', 'EUR', 'AZN']) {
+    const p = await panel(undefined, code);
+    assert.equal(p.context.money('1234'), `12,34 ${code}`);
+    assert.equal(p.get('total-amount').textContent, `0,00 ${code}`);
+    p.context.openEditor();
+    p.get('edit-user').value = '101'; p.get('edit-amount').value = '12,34';
+    p.get('edit-category').value = 'еда'; p.get('edit-date').value = '2026-10-19';
+    await p.submit();
+    assert.equal(p.requests[0].body.amount, '1234');
+  }
+});
 
 test('editing a comment sends only that field and the original version', async () => {
   const p = await panel();

@@ -45,6 +45,7 @@ type Bot struct {
 	Agent         Responder
 	PanelLink     func(context.Context, int64) (string, error)
 	PanelMasterID int64
+	Currency      expense.Currency
 	// OnFatal is called with a sanitized APIError; it must not block the handler.
 	OnFatal func(error)
 }
@@ -233,7 +234,7 @@ func (b *Bot) Handle(ctx context.Context, u Update) error {
 			reply = "Отправьте расход обычным текстом, например: кофе 350."
 		case "/start":
 			session = agent.Session{}
-			reply = "Привет! Записываю ваши расходы в рублях. Напишите «кофе 350», «такси 1200 вчера», «покажи траты за неделю» или «сколько потратил на еду в этом месяце». Через бота доступны только ваши расходы."
+			reply = "Привет! Записываю ваши расходы в " + b.Currency.Code() + " (" + b.Currency.Name() + "). Напишите «кофе 350», «такси 1200 вчера», «покажи траты за неделю» или «сколько потратил на еду в этом месяце». Через бота доступны только ваши расходы."
 			if user == b.PanelMasterID {
 				reply += " Команда /panel — вход главного аккаунта в семейную панель с двухфакторной защитой."
 			}

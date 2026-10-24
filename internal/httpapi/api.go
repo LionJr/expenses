@@ -30,6 +30,7 @@ type API struct {
 	Store          Repository
 	Timezone       string
 	RequestTimeout time.Duration
+	Currency       expense.Currency
 }
 
 func (a *API) Handler() http.Handler {
@@ -42,7 +43,10 @@ func (a *API) Handler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := t.Execute(w, a.Timezone); err != nil {
+		if err := t.Execute(w, struct {
+			Timezone string
+			Currency expense.Currency
+		}{a.Timezone, a.Currency}); err != nil {
 			slog.Error("render panel", "error", err)
 		}
 	})

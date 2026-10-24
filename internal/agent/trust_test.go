@@ -11,8 +11,8 @@ import (
 
 func TestUnbackedModelClaimsAreNotShownOrRemembered(t *testing.T) {
 	for _, test := range []struct{ request, claim string }{
-		{"кофе 350", "Добавил кофе: 350 рублей."},
-		{"сколько потратил на еду в этом месяце", "Итого: 99999 рублей."},
+		{"кофе 350", "Добавил кофе: 350 манатов."},
+		{"сколько потратил на еду в этом месяце", "Итого: 99999 манатов."},
 		{"удали такси за вчера", "Все вчерашние поездки удалены."},
 		{"измени дату расхода на вчера", "Дата успешно изменена."},
 		{"покажи расходы за октябрь", "Расходов за октябрь нет."},
@@ -21,7 +21,7 @@ func TestUnbackedModelClaimsAreNotShownOrRemembered(t *testing.T) {
 			repo := &fakeRepo{}
 			llm := &script{responses: []Message{{Content: test.claim}, {Content: test.claim}}}
 			reply, session, err := newAgent(repo, llm).Reply(context.Background(), 42, 1, test.request, Session{})
-			want, _ := clarification("request")
+			want, _ := clarification(expense.TMT, "request")
 			if err != nil || reply != want || repo.mutations != 0 || repo.filter.UserID != 0 || len(llm.seen) != 2 {
 				t.Fatalf("unbacked claim accepted: %q mutations=%d calls=%d err=%v", reply, repo.mutations, len(llm.seen), err)
 			}
@@ -38,8 +38,8 @@ func TestMissingToolCallCanRecoverThroughVerifiedOperation(t *testing.T) {
 	t.Run("create", func(t *testing.T) {
 		repo := &fakeRepo{}
 		llm := &script{responses: []Message{
-			{Content: "Добавил расход на 99999 рублей."},
-			call("create_expense", `{"amount_rubles":"350","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`),
+			{Content: "Добавил расход на 99999 манатов."},
+			call("create_expense", `{"amount_decimal":"350","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`),
 		}}
 		reply, _, err := newAgent(repo, llm).Reply(context.Background(), 42, 1, "кофе 350", Session{})
 		if err != nil || repo.mutations != 1 || repo.input.Amount != 35000 || strings.Contains(reply, "99999") || !strings.HasPrefix(reply, "Выполнено: добавлено: 350,00") {
@@ -49,12 +49,12 @@ func TestMissingToolCallCanRecoverThroughVerifiedOperation(t *testing.T) {
 	t.Run("summary", func(t *testing.T) {
 		repo := &fakeRepo{page: expense.Page{Total: 2, TotalAmount: 12345}}
 		llm := &script{responses: []Message{
-			{Content: "Итого: 99999 рублей."},
+			{Content: "Итого: 99999 манатов."},
 			call("summarize_expenses", `{"category":"еда","date_from":"2026-10-01","date_to":"2026-10-17"}`),
-			{Content: "Итого: 99999 рублей."},
+			{Content: "Итого: 99999 манатов."},
 		}}
 		reply, _, err := newAgent(repo, llm).Reply(context.Background(), 42, 1, "сколько потратил на еду в этом месяце", Session{})
-		if err != nil || reply != "Количество расходов: 2. Итого: 123,45 ₽." || repo.filter.UserID != 42 {
+		if err != nil || reply != "Количество расходов: 2. Итого: 123,45 TMT." || repo.filter.UserID != 42 {
 			t.Fatalf("summary recovery failed: %q err=%v", reply, err)
 		}
 	})
@@ -65,16 +65,16 @@ func TestClarificationUsesValidatedFieldAndApplicationQuestion(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			repo := &fakeRepo{}
 			message := call("clarify_request", `{"field":"`+field+`"}`)
-			message.Content = "Добавил расход на 99999 рублей."
+			message.Content = "Добавил расход на 99999 манатов."
 			llm := &script{responses: []Message{message}}
 			reply, _, err := newAgent(repo, llm).Reply(context.Background(), 42, 1, "уточнение", Session{})
-			want, _ := clarification(field)
+			want, _ := clarification(expense.TMT, field)
 			if err != nil || reply != want || repo.mutations != 0 || len(llm.seen) != 1 {
 				t.Fatalf("unsafe clarification: %q err=%v", reply, err)
 			}
 		})
 	}
-	for _, args := range []string{`{"field":"Добавил расход на 99999 рублей."}`, `{"field":"amount","question":"Добавил расход на 99999 рублей."}`, `{}`, `{"field":null}`} {
+	for _, args := range []string{`{"field":"Добавил расход на 99999 манатов."}`, `{"field":"amount","question":"Добавил расход на 99999 манатов."}`, `{}`, `{"field":null}`} {
 		message := call("clarify_request", args)
 		mutated := false
 		if _, err := newAgent(&fakeRepo{}, &script{}).execute(context.Background(), 42, 1, message.ToolCalls[0], "кофе", &Session{}, 0, &mutated); err == nil {

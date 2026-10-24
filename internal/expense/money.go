@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// ParseRubles uses decimal strings exclusively; no rounding or floating point.
-func ParseRubles(s string) (int64, error) {
+// ParseAmount converts decimal amounts to integer minor units (100 per unit).
+// It uses decimal strings exclusively; no rounding or floating point.
+func ParseAmount(s string) (int64, error) {
 	s = strings.ReplaceAll(strings.TrimSpace(s), ",", ".")
 	parts := strings.Split(s, ".")
 	if len(parts) > 2 || parts[0] == "" {

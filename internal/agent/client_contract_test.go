@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/LionJr/expenses/internal/expense"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,12 +28,12 @@ func TestClientHTTPContractAndToolDecoding(t *testing.T) {
 			t.Errorf("incorrect completion payload: %+v", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"op-1","type":"function","function":{"name":"create_expense","arguments":"{\"amount_rubles\":\"350\"}"}}]}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"op-1","type":"function","function":{"name":"create_expense","arguments":"{\"amount_decimal\":\"350\"}"}}]}}]}`))
 	}))
 	defer server.Close()
 	client := Client{BaseURL: server.URL + "/v1/", Key: "test-key", Model: "test-model", HTTP: server.Client()}
-	message, err := client.Complete(context.Background(), []Message{{Role: "user", Content: "кофе 350"}}, Tools())
-	if err != nil || len(message.ToolCalls) != 1 || message.ToolCalls[0].ID != "op-1" || message.ToolCalls[0].Function.Name != "create_expense" || message.ToolCalls[0].Function.Arguments != `{"amount_rubles":"350"}` {
+	message, err := client.Complete(context.Background(), []Message{{Role: "user", Content: "кофе 350"}}, Tools(expense.TMT))
+	if err != nil || len(message.ToolCalls) != 1 || message.ToolCalls[0].ID != "op-1" || message.ToolCalls[0].Function.Name != "create_expense" || message.ToolCalls[0].Function.Arguments != `{"amount_decimal":"350"}` {
 		t.Fatalf("tool call lost during decoding: %+v %v", message, err)
 	}
 }
@@ -61,7 +62,7 @@ func TestClientFailurePolicy(t *testing.T) {
 			}))
 			defer server.Close()
 			client := Client{BaseURL: server.URL, HTTP: server.Client()}
-			_, err := client.Complete(context.Background(), nil, Tools())
+			_, err := client.Complete(context.Background(), nil, Tools(expense.TMT))
 			var provider *ProviderError
 			if !errors.As(err, &provider) || requests != tc.attempts || provider.Attempts != tc.attempts || provider.Status != tc.status {
 				t.Fatalf("incorrect failure policy: requests=%d error=%v", requests, err)

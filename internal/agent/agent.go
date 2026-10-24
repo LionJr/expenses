@@ -25,6 +25,7 @@ type Agent struct {
 	Location *time.Location
 	Timeout  time.Duration
 	Now      func() time.Time
+	Currency expense.Currency
 }
 
 const fallback = "Не удалось завершить запрос к ИИ. Если операция уже выполнена, она указана ниже. Посмотрите расходы перед новой попыткой."
@@ -34,8 +35,6 @@ var (
 	listRequest       = regexp.MustCompile(`(?i)(?:покажи|показать|покажите|список)[\s\S]*(?:трат|расход)`)
 	showExpenseID     = regexp.MustCompile(`(?i)^\s*(?:покажи|показать|покажите|найди)\s+(?:расход|трату)\s+#([1-9][0-9]*)[.!?]?\s*$`)
 	explicitExpenseID = regexp.MustCompile(`#([0-9]+)`)
-	// A compact expense entry is an amount, not a command to edit or delete.
-	expenseEntry = regexp.MustCompile(`(?i)^\s*[\p{L}][\p{L}\s]*\s+([-−]?[0-9]+(?:[.,][0-9]+)?)(?:\s*(?:₽|руб(?:лей|ля|ль)?\.?))?(?:\s+(?:сегодня|вчера))?\s*$`)
 )
 
 func (a *Agent) Reply(ctx context.Context, user, update int64, text string, s Session) (string, Session, error) {
@@ -50,12 +49,12 @@ func (a *Agent) Reply(ctx context.Context, user, update int64, text string, s Se
 	}
 	if len(saved) > 0 {
 		clearSelection(&s)
-		answer := "Выполнено: " + receipt("", saved)
+		answer := "Выполнено: " + receipt(a.Currency, "", saved)
 		remember(&s, text, answer)
 		slog.Info("agent mutation recovered", "update_id", update, "duration_ms", time.Since(started).Milliseconds())
 		return answer, s, nil
 	}
-	request := prepareRequest(text, s)
+	request := prepareRequest(a.Currency, text, s)
 	if request.handled {
 		return request.answer, request.session, nil
 	}

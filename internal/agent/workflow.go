@@ -12,24 +12,24 @@ import (
 )
 
 func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text string, s Session, permission requestPermissions, started time.Time) (preparedRequest, error) {
-	if token, ok := previousAmount(text); ok && permission.Mutation == toolUpdateExpense {
-		if _, err := expense.ParseRubles(token); err != nil {
+	if token, ok := previousAmount(a.Currency, text); ok && permission.Mutation == toolUpdateExpense {
+		if _, err := expense.ParseAmount(token); err != nil {
 			clearSelection(&s)
 			answer := "Прежняя сумма должна быть положительной и содержать не более двух знаков после запятой. Ничего не изменено."
 			remember(&s, text, answer)
 			return preparedRequest{session: s, answer: answer, handled: true}, nil
 		}
 	}
-	if match := expenseEntry.FindStringSubmatch(text); len(match) > 0 && !selectionReply(text) {
-		if _, amountErr := expense.ParseRubles(match[1]); amountErr != nil {
+	if token, compactEntry := a.Currency.EntryAmount(text); compactEntry && !selectionReply(text) {
+		if _, amountErr := expense.ParseAmount(token); amountErr != nil {
 			clearSelection(&s)
 			answer := "Сумма расхода должна быть больше нуля и содержать не более двух знаков после запятой. Ничего не изменено."
 			remember(&s, text, answer)
 			return preparedRequest{session: s, answer: answer, handled: true}, nil
 		}
 	}
-	if token, ok := previousAmount(text); ok && latestRequested(text) {
-		expected, parseErr := expense.ParseRubles(token)
+	if token, ok := previousAmount(a.Currency, text); ok && latestRequested(text) {
+		expected, parseErr := expense.ParseAmount(token)
 		if parseErr == nil {
 			page, lookupErr := a.Store.List(ctx, expense.Filter{UserID: user, Latest: true, Limit: 1})
 			if lookupErr != nil {
@@ -40,7 +40,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 				answer := "Расходов для изменения не найдено."
 				if len(page.Items) > 0 {
 					e := page.Items[0]
-					answer = fmt.Sprintf("Прежняя сумма не совпадает: последний добавленный расход — %d,%02d ₽ · %s · %s (#%d). Ничего не изменено. Уточните, какой расход нужно изменить.", e.Amount/100, e.Amount%100, e.Category, e.Comment, e.ID)
+					answer = fmt.Sprintf("Прежняя сумма не совпадает: последний добавленный расход — %s · %s · %s (#%d). Ничего не изменено. Уточните, какой расход нужно изменить.", a.Currency.FormatAmount(e.Amount), e.Category, e.Comment, e.ID)
 				}
 				remember(&s, text, answer)
 				return preparedRequest{session: s, answer: answer, handled: true}, nil
@@ -74,7 +74,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 			}
 			if len(page.Items) > 0 {
 				s.Candidates, s.CandidateTotal = page.Items, page.Total
-				answer = choicePrompt(s)
+				answer = choicePrompt(a.Currency, s)
 				prepareChoice(&s, update)
 			}
 		}
@@ -91,7 +91,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		if s.Choice == nil {
 			// Legacy sessions cannot prove which list was sent. Show it afresh first.
 			prepareChoice(&s, update)
-			answer := "Сначала покажу актуальный список. После его получения отправьте номер ещё раз.\n" + choicePrompt(s)
+			answer := "Сначала покажу актуальный список. После его получения отправьте номер ещё раз.\n" + choicePrompt(a.Currency, s)
 			remember(&s, text, answer)
 			return preparedRequest{session: s, answer: answer, handled: true}, nil
 		}
@@ -128,7 +128,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 			}
 			answer = "Не удалось подтвердить изменение. " + safeError(e)
 		} else {
-			answer = "Выполнено: " + receipt(action.Kind, result)
+			answer = "Выполнено: " + receipt(a.Currency, action.Kind, result)
 		}
 		if e == nil || errors.Is(e, expense.ErrNotFound) {
 			clearSelection(&s)
@@ -147,7 +147,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 		s.Candidates, s.CandidateTotal = page.Items, page.Total
 		answer := "По заданным фильтрам расходов не найдено."
 		if len(page.Items) > 0 {
-			answer = choicePrompt(s)
+			answer = choicePrompt(a.Currency, s)
 			prepareChoice(&s, update)
 		}
 		remember(&s, text, answer)
@@ -165,7 +165,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 				remember(&s, text, answer)
 				return preparedRequest{session: s, answer: answer, handled: true}, nil
 			}
-			amount, err := expense.ParseRubles(match[2])
+			amount, err := expense.ParseAmount(match[2])
 			if err != nil {
 				answer := "Сумма должна быть больше нуля и содержать не более двух знаков после запятой. Ничего не изменено."
 				remember(&s, text, answer)
@@ -185,7 +185,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 			if page.Total > 1 {
 				s.Pending = &PendingAction{Kind: kind, Patch: patch, IntentValidated: true}
 				prepareChoice(&s, update)
-				answer = choicePrompt(s)
+				answer = choicePrompt(a.Currency, s)
 			} else {
 				result, err := a.executeMutation(ctx, update, user, kind, page.Items[0].ID, expense.Input{}, patch)
 				if err != nil {
@@ -194,7 +194,7 @@ func (a *Agent) resolveRequest(ctx context.Context, user, update int64, text str
 					}
 					answer = "Не удалось подтвердить изменение. " + safeError(err)
 				} else {
-					answer = "Выполнено: " + receipt(kind, result)
+					answer = "Выполнено: " + receipt(a.Currency, kind, result)
 				}
 				clearSelection(&s)
 			}

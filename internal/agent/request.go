@@ -16,7 +16,7 @@ type preparedRequest struct {
 	handled    bool
 }
 
-func prepareRequest(text string, s Session) preparedRequest {
+func prepareRequest(c expense.Currency, text string, s Session) preparedRequest {
 	if err := expense.Text(text); err != nil {
 		clearSelection(&s)
 		answer := "Текст содержит недопустимый символ. Отправьте запрос без него."
@@ -43,15 +43,21 @@ func prepareRequest(text string, s Session) preparedRequest {
 		remember(&s, text, answer)
 		return preparedRequest{session: s, answer: answer, handled: true}
 	}
+	if c.HasForeignAmount(text) {
+		clearSelection(&s)
+		answer := "Приложение использует " + c.Code() + ". Укажите сумму в этой валюте; автоматического пересчёта нет."
+		remember(&s, text, answer)
+		return preparedRequest{session: s, answer: answer, handled: true}
+	}
 	var continuation *requestPermissions
 	if draft := s.Request; draft != nil {
-		incoming := permissionsFor(text)
+		incoming := permissionsFor(c, text)
 		if incoming.Mutation == "" && !incoming.ReadOnly {
 			permission := draft.Permissions
 			value := strings.TrimSpace(text)
 			if draft.Field == "amount" {
-				if _, err := expense.ParseRubles(value); err != nil {
-					answer := "Введите положительную сумму в рублях, до двух знаков после запятой, например 350,50. Отменить — «отмена»."
+				if _, err := expense.ParseAmount(value); err != nil {
+					answer := "Введите положительную сумму в " + c.Code() + ", до двух знаков после запятой, например 350,50. Отменить — «отмена»."
 					remember(&s, text, answer)
 					return preparedRequest{session: s, answer: answer, handled: true}
 				}
@@ -78,12 +84,12 @@ func prepareRequest(text string, s Session) preparedRequest {
 		value := strings.TrimSpace(text)
 		if strings.EqualFold(value, "сумму") || strings.EqualFold(value, "сумма") {
 			draft.Field = "amount"
-			answer := "Укажите новую сумму в рублях, например 500,50.\nОтменить — «отмена»."
+			answer := "Укажите новую сумму в " + c.Code() + ", например 500,50.\nОтменить — «отмена»."
 			remember(&s, text, answer)
 			return preparedRequest{session: s, answer: answer, handled: true}
 		}
 		if amountReply.MatchString(value) {
-			if _, err := expense.ParseRubles(value); err != nil {
+			if _, err := expense.ParseAmount(value); err != nil {
 				answer := "Сумма должна быть больше нуля, до двух знаков после запятой.\nВведите сумму, например 500,50, или «отмена»."
 				remember(&s, text, answer)
 				return preparedRequest{session: s, answer: answer, handled: true}
@@ -106,7 +112,7 @@ func prepareRequest(text string, s Session) preparedRequest {
 		remember(&s, text, answer)
 		return preparedRequest{session: s, answer: answer, handled: true}
 	}
-	permission := permissionsFor(text)
+	permission := permissionsFor(c, text)
 	if continuation != nil {
 		permission = *continuation
 	}

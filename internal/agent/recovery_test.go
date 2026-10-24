@@ -37,7 +37,7 @@ func TestLatestRequiresExplicitSelection(t *testing.T) {
 func TestReadSelectionCannotInferMutationFromHistory(t *testing.T) {
 	repo := &fakeRepo{}
 	llm := &script{responses: []Message{call("delete_expense", `{"id":"123456789"}`), {Content: "Готово"}}}
-	s := Session{Choice: &botstate.Choice{UpdateID: 9, State: botstate.AwaitingSelection}, Candidates: []expense.Expense{{ID: 987654321, UserID: 42}, {ID: 123456789, UserID: 42}}, CandidateTotal: 2, History: []Message{{Role: "user", Content: "удали такси"}, {Role: "assistant", Content: "1. Такси 350 ₽\n2. Такси 450 ₽"}}}
+	s := Session{Choice: &botstate.Choice{UpdateID: 9, State: botstate.AwaitingSelection}, Candidates: []expense.Expense{{ID: 987654321, UserID: 42}, {ID: 123456789, UserID: 42}}, CandidateTotal: 2, History: []Message{{Role: "user", Content: "удали такси"}, {Role: "assistant", Content: "1. Такси 350 TMT\n2. Такси 450 TMT"}}}
 	reply, _, err := newAgent(repo, llm).Reply(context.Background(), 42, 10, "вторую", s)
 	if err != nil || repo.mutations != 0 || len(llm.seen) != 0 || !strings.Contains(reply, "Выбран расход #123456789") {
 		t.Fatalf("read selection inferred mutation from old request: %q err=%v", reply, err)
@@ -57,7 +57,7 @@ func TestReplayUsesCommittedOperationBeforeLookupOrLLM(t *testing.T) {
 }
 func TestPendingUpdateSurvivesPersistence(t *testing.T) {
 	repo := &fakeRepo{page: expense.Page{Items: []expense.Expense{{ID: 11, Amount: 35000}, {ID: 22, Amount: 35000}}, Total: 2}}
-	llm := &script{responses: []Message{call("list_expenses", `{"search":"такси"}`), call("update_expense", `{"id":"11","amount_rubles":"450","expected_amount_rubles":"350"}`)}}
+	llm := &script{responses: []Message{call("list_expenses", `{"search":"такси"}`), call("update_expense", `{"id":"11","amount_decimal":"450","expected_amount_decimal":"350"}`)}}
 	_, s, _ := newAgent(repo, llm).Reply(context.Background(), 42, 10, "такси было не 350, а 450", Session{})
 	if s.Pending == nil || repo.mutations != 0 {
 		t.Fatal("missing pending update")
@@ -84,7 +84,7 @@ func TestPendingInvalidChoiceAndNewRequest(t *testing.T) {
 	if !strings.Contains(reply, "Такого номера") || s.Pending == nil || repo.mutations != 0 || len(llm.seen) != 0 {
 		t.Fatal("invalid choice lost pending state")
 	}
-	llm = &script{responses: []Message{call("create_expense", `{"amount_rubles":"50","category":"еда","spent_at":"2026-10-17"}`), {Content: "Готово"}}}
+	llm = &script{responses: []Message{call("create_expense", `{"amount_decimal":"50","category":"еда","spent_at":"2026-10-17"}`), {Content: "Готово"}}}
 	_, s, _ = newAgent(repo, llm).Reply(context.Background(), 42, 11, "кофе 50", s)
 	if repo.mutations != 1 || repo.input.Amount != 5000 || s.Pending != nil {
 		t.Fatal("new intent did not cancel pending action")
@@ -101,7 +101,7 @@ func TestProviderDiagnosticsAreStructuredAndRedacted(t *testing.T) {
 	}))
 	defer server.Close()
 	client := &Client{BaseURL: server.URL, Key: "secret-api-key", Model: "fake", HTTP: server.Client()}
-	_, err := client.Complete(context.Background(), nil, Tools())
+	_, err := client.Complete(context.Background(), nil, Tools(expense.TMT))
 	var provider *ProviderError
 	if !errors.As(err, &provider) || provider.Status != 401 || provider.Attempts != 1 || provider.Kind != "authentication" {
 		t.Fatalf("lost diagnostics: %v", err)
@@ -125,7 +125,7 @@ func TestStorageErrorsDoNotLeakExpenseDetails(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(old) })
 	repo := &fakeRepo{mutationError: errors.New("SQL includes secret-expense-comment")}
-	llm := &script{responses: []Message{call("create_expense", `{"amount_rubles":"50","category":"еда","spent_at":"2026-10-17"}`), {Content: "Готово"}}}
+	llm := &script{responses: []Message{call("create_expense", `{"amount_decimal":"50","category":"еда","spent_at":"2026-10-17"}`), {Content: "Готово"}}}
 	reply, _, err := newAgent(repo, llm).Reply(context.Background(), 42, 99, "добавь private-expense-text 50", Session{})
 	var processing *ProcessingError
 	if !errors.As(err, &processing) || strings.Contains(err.Error(), "secret-expense-comment") {

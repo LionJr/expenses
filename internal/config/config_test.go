@@ -10,6 +10,25 @@ import (
 
 const testAuthKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+func TestCurrencyEnvironment(t *testing.T) {
+	t.Setenv("PANEL_MASTER_USER_ID", "42")
+	t.Setenv("PANEL_AUTH_KEY", testAuthKey)
+	t.Setenv("DATABASE_URL", "postgres://example")
+	t.Setenv("TELEGRAM_ALLOWED_USER_IDS", "42")
+	t.Setenv("TELEGRAM_BOT_TOKEN", "")
+	for _, code := range []string{"", "TMT", "RUB", "USD", "EUR", "AZN", " usd "} {
+		t.Setenv("APP_CURRENCY", code)
+		cfg, err := Load()
+		want := strings.ToUpper(strings.TrimSpace(code))
+		if want == "" {
+			want = "TMT"
+		}
+		if err != nil || cfg.Currency.Code() != want {
+			t.Fatalf("currency %q: got %q err=%v", code, cfg.Currency, err)
+		}
+	}
+}
+
 func TestLoad(t *testing.T) {
 	t.Setenv("PANEL_MASTER_USER_ID", "42")
 	t.Setenv("PANEL_AUTH_KEY", testAuthKey)
@@ -45,6 +64,8 @@ func TestLoadInvalidEnvironment(t *testing.T) {
 		{"PANEL_MASTER_USER_ID", "99", "PANEL_MASTER_USER_ID"},
 		{"DATABASE_URL", "", "DATABASE_URL is required"},
 		{"APP_TIMEZONE", "invalid/timezone", "APP_TIMEZONE:"},
+		{"APP_CURRENCY", "JPY", "APP_CURRENCY"},
+		{"APP_CURRENCY", "invalid", "APP_CURRENCY"},
 		{"LLM_TIMEOUT", "invalid", "LLM_TIMEOUT must be between 1s and 2m"},
 		{"LLM_TIMEOUT", "500ms", "LLM_TIMEOUT must be between 1s and 2m"},
 		{"LLM_TIMEOUT", "3m", "LLM_TIMEOUT must be between 1s and 2m"},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/LionJr/expenses/internal/expense"
 	"github.com/LionJr/expenses/internal/expensewire"
 )
 
@@ -12,7 +13,7 @@ type receiptMetadata struct {
 	Operation string `json:"operation"`
 }
 
-func receipt(kind string, data json.RawMessage) string {
+func receipt(c expense.Currency, kind string, data json.RawMessage) string {
 	var metadata receiptMetadata
 	if json.Unmarshal(data, &metadata) == nil && metadata.Operation != "" {
 		kind = metadata.Operation
@@ -28,7 +29,7 @@ func receipt(kind string, data json.RawMessage) string {
 	if kind == toolUpdateExpense {
 		verb = "изменено"
 	}
-	result := fmt.Sprintf("%s: %d,%02d ₽ · %s · %s", verb, e.Amount/100, e.Amount%100, e.Category, e.SpentAt)
+	result := fmt.Sprintf("%s: %s · %s · %s", verb, c.FormatAmount(int64(e.Amount)), e.Category, e.SpentAt)
 	if strings.TrimSpace(e.Comment) != "" {
 		result += " · " + e.Comment
 	}

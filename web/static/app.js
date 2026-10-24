@@ -1,17 +1,18 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const categories = ['еда', 'транспорт', 'жильё', 'развлечения', 'здоровье', 'покупки', 'другое'];
+const currency = document.querySelector('meta[name="app-currency"]').content;
 const timezone = document.querySelector('meta[name="app-timezone"]').content;
 let users = [], items = [], offset = 0, total = 0, editing = null, original = null, generation = 0, editorGeneration = 0;
 const limit = 20;
 $('timezone').textContent = timezone;
 function money(value) {
   const n = BigInt(value), whole = (n / 100n).toLocaleString('ru-RU'), fraction = (n % 100n).toString().padStart(2, '0');
-  return `${whole},${fraction} ₽`;
+  return `${whole},${fraction} ${currency}`;
 }
-function rublesToKopecks(value) {
+function amountToMinorUnits(value) {
   const match = value.trim().match(/^(\d+)(?:[.,](\d{1,2}))?$/);
-  if (!match) throw new Error('Введите положительную сумму с точностью до копеек.');
+  if (!match) throw new Error('Введите положительную сумму, не более двух знаков после запятой.');
   const amount = BigInt(match[1]) * 100n + BigInt((match[2] || '').padEnd(2, '0'));
   if (amount <= 0n || amount > 9223372036854775807n) throw new Error('Сумма вне допустимого диапазона.');
   return amount.toString();
@@ -82,7 +83,7 @@ $('expense-form').onsubmit = async event => {
   event.preventDefault(); $('save').disabled = true;
   const editingID = editing, snapshot = original, editorRequest = editorGeneration;
   try {
-    const values = { amount: rublesToKopecks($('edit-amount').value), category: $('edit-category').value, spent_at: $('edit-date').value, comment: $('edit-comment').value };
+    const values = { amount: amountToMinorUnits($('edit-amount').value), category: $('edit-category').value, spent_at: $('edit-date').value, comment: $('edit-comment').value };
     const body = editingID ? { expected_version: snapshot.version } : { ...values, user_id: $('edit-user').value };
     if (editingID) {
       for (const [key, value] of Object.entries(values)) if (value !== snapshot[key]) body[key] = value;

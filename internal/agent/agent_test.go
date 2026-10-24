@@ -126,22 +126,22 @@ func newAgent(f *fakeRepo, s *script) *Agent {
 }
 func TestCreateAndDateContext(t *testing.T) {
 	f := &fakeRepo{}
-	s := &script{responses: []Message{call("create_expense", `{"amount_rubles":"350,50","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`), {Content: "Записано."}}}
+	s := &script{responses: []Message{call("create_expense", `{"amount_decimal":"350,50","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`), {Content: "Записано."}}}
 	a := newAgent(f, s)
 	reply, _, _ := a.Reply(context.Background(), 42, 7, "кофе 350,50", Session{})
 	if f.mutations != 1 || f.owner != 42 || f.input.Amount != 35050 || f.key != "telegram:7:mutation:1" {
 		t.Fatalf("wrong mutation: %+v", f)
 	}
-	if !strings.Contains(reply, "Выполнено: добавлено: 350,50 ₽") || !strings.Contains(s.seen[0][0].Content, "Сегодня 2026-10-17") {
+	if !strings.Contains(reply, "Выполнено: добавлено: 350,50 TMT") || !strings.Contains(s.seen[0][0].Content, "Сегодня 2026-10-17") {
 		t.Fatal("missing response or local date")
 	}
 }
 func TestMutationConfirmationDoesNotUseGeneratedText(t *testing.T) {
 	for _, generated := range []string{"Создан **\u200b**\u200b**", "Запрос некорректен. Уточните, нужно ли создать расход."} {
 		f := &fakeRepo{}
-		s := &script{responses: []Message{call("create_expense", `{"amount_rubles":"350","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`), {Content: generated}}}
+		s := &script{responses: []Message{call("create_expense", `{"amount_decimal":"350","category":"еда","spent_at":"2026-10-17","comment":"кофе"}`), {Content: generated}}}
 		reply, session, err := newAgent(f, s).Reply(context.Background(), 42, 7, "кофе 350", Session{})
-		want := "Выполнено: добавлено: 350,00 ₽ · еда · 2026-10-17 · кофе"
+		want := "Выполнено: добавлено: 350,00 TMT · еда · 2026-10-17 · кофе"
 		if err != nil || reply != want || f.mutations != 1 || len(s.seen) != 1 {
 			t.Fatalf("unexpected confirmation: %q, calls=%d, err=%v", reply, len(s.seen), err)
 		}
@@ -151,7 +151,7 @@ func TestMutationConfirmationDoesNotUseGeneratedText(t *testing.T) {
 	}
 }
 func TestRejectUnknownAndOwnerArguments(t *testing.T) {
-	for _, args := range []string{`{"amount_rubles":"1","category":"еда","spent_at":"2026-10-17","user_id":"99"}`, `{"amount_rubles":1,"category":"еда","spent_at":"2026-10-17"}`, `{"amount_rubles":"1.001","category":"еда","spent_at":"2026-10-17"}`, `null`} {
+	for _, args := range []string{`{"amount_decimal":"1","category":"еда","spent_at":"2026-10-17","user_id":"99"}`, `{"amount_decimal":1,"category":"еда","spent_at":"2026-10-17"}`, `{"amount_decimal":"1.001","category":"еда","spent_at":"2026-10-17"}`, `null`} {
 		f := &fakeRepo{}
 		s := &script{responses: []Message{call("create_expense", args), {Content: "Уточните."}}}
 		newAgent(f, s).Reply(context.Background(), 42, 7, "кофе 1", Session{})
@@ -293,7 +293,7 @@ func TestUpdateRequiresFoundCandidateAndMatchingOldAmount(t *testing.T) {
 			repo := &fakeRepo{}
 			mutated := false
 			_, err := newAgent(repo, &script{}).execute(context.Background(), 42, 1,
-				call("update_expense", `{"id":"22","amount_rubles":"450"}`).ToolCalls[0],
+				call("update_expense", `{"id":"22","amount_decimal":"450"}`).ToolCalls[0],
 				"такси было не 350, а 450", &tc.session, 0, &mutated)
 			if tc.wantWrite {
 				if err != nil || repo.mutations != 1 || !mutated || repo.patch.ExpectedAmount == nil || *repo.patch.ExpectedAmount != 35000 {
@@ -333,19 +333,19 @@ func TestLLMRetryAndCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 	c := Client{BaseURL: server.URL, Key: "secret", Model: "fake", HTTP: server.Client()}
-	m, e := c.Complete(context.Background(), []Message{{Role: "user", Content: "test"}}, Tools())
+	m, e := c.Complete(context.Background(), []Message{{Role: "user", Content: "test"}}, Tools(expense.TMT))
 	if e != nil || m.Content != "Готово" || requests != 3 {
 		t.Fatalf("retry failed: %v", e)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, e = c.Complete(ctx, nil, Tools()); e == nil {
+	if _, e = c.Complete(ctx, nil, Tools(expense.TMT)); e == nil {
 		t.Fatal("ignored cancellation")
 	}
 }
 
 func TestToolSchemasHaveRequiredArrays(t *testing.T) {
-	data, e := json.Marshal(Tools())
+	data, e := json.Marshal(Tools(expense.TMT))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -354,7 +354,7 @@ func TestToolSchemasHaveRequiredArrays(t *testing.T) {
 	}
 }
 func TestReplayReceiptUsesRecordedOperation(t *testing.T) {
-	got := receipt("delete_expense", json.RawMessage(`{"operation":"create_expense","id":"1","amount":"35000","category":"еда","spent_at":"2026-10-17"}`))
+	got := receipt(expense.TMT, "delete_expense", json.RawMessage(`{"operation":"create_expense","id":"1","amount":"35000","category":"еда","spent_at":"2026-10-17"}`))
 	if !strings.Contains(got, "добавлено") || strings.Contains(got, "удалён") {
 		t.Fatal(got)
 	}
@@ -376,16 +376,16 @@ func TestShowExpensesRequiresList(t *testing.T) {
 
 func TestSummaryUsesDatabaseResult(t *testing.T) {
 	f := &fakeRepo{page: expense.Page{Total: 2, TotalAmount: 255025}}
-	s := &script{responses: []Message{call("summarize_expenses", `{"category":"здоровье"}`), {Content: "**\u200b** Итого 99999 рублей"}}}
+	s := &script{responses: []Message{call("summarize_expenses", `{"category":"здоровье"}`), {Content: "**\u200b** Итого 99999 манатов"}}}
 	reply, _, err := newAgent(f, s).Reply(context.Background(), 42, 1, "Сколько потратил на здоровье", Session{})
-	if err != nil || reply != "Количество расходов: 2. Итого: 2550,25 ₽." || f.filter.UserID != 42 || f.filter.Category != "здоровье" {
+	if err != nil || reply != "Количество расходов: 2. Итого: 2550,25 TMT." || f.filter.UserID != 42 || f.filter.Category != "здоровье" {
 		t.Fatalf("wrong summary: %q, err=%v", reply, err)
 	}
 }
 
 func TestEmptyListDoesNotUseModelClaims(t *testing.T) {
 	f := &fakeRepo{}
-	s := &script{responses: []Message{call("list_expenses", `{}`), {Content: "Найден расход на 999 рублей"}}}
+	s := &script{responses: []Message{call("list_expenses", `{}`), {Content: "Найден расход на 999 манатов"}}}
 	reply, _, err := newAgent(f, s).Reply(context.Background(), 42, 1, "Покажи траты за неделю", Session{})
 	if err != nil || reply != "По заданным фильтрам расходов не найдено." {
 		t.Fatalf("wrong empty list: %q, err=%v", reply, err)
@@ -414,7 +414,7 @@ func TestExplicitExpenseIDLookup(t *testing.T) {
 }
 
 func TestForeignExplicitIDMutationNeverCallsLLM(t *testing.T) {
-	for _, text := range []string{"Измени сумму расхода #8 на 1 рубль", "Удали расход #8"} {
+	for _, text := range []string{"Измени сумму расхода #8 на 1 манат", "Удали расход #8"} {
 		f := &fakeRepo{}
 		provider := &script{err: errors.New("provider unavailable")}
 		reply, session, err := newAgent(f, provider).Reply(context.Background(), 42, 10, text, Session{Candidates: []expense.Expense{{ID: 7}}, CandidateTotal: 1})
@@ -449,14 +449,14 @@ func TestLatestCorrectionMismatchIsDeterministic(t *testing.T) {
 	f := &fakeRepo{page: expense.Page{Items: []expense.Expense{{ID: 9, UserID: 42, Amount: 60015, Category: "здоровье", Comment: "лекарства 3"}}, Total: 6}}
 	provider := &script{err: errors.New("LLM unavailable")}
 	reply, _, err := newAgent(f, provider).Reply(context.Background(), 42, 1, "последнее было не 99999, а 100", Session{})
-	if err != nil || !strings.Contains(reply, "Прежняя сумма не совпадает") || !strings.Contains(reply, "600,15 ₽") || !strings.Contains(reply, "(#9)") || len(provider.seen) != 0 || f.mutations != 0 || !f.filter.Latest || f.filter.UserID != 42 {
+	if err != nil || !strings.Contains(reply, "Прежняя сумма не совпадает") || !strings.Contains(reply, "600,15 TMT") || !strings.Contains(reply, "(#9)") || len(provider.seen) != 0 || f.mutations != 0 || !f.filter.Latest || f.filter.UserID != 42 {
 		t.Fatalf("wrong mismatch handling: %q %v", reply, err)
 	}
 }
 
 // execute exercises the real tool boundary without running the model loop.
 func (a *Agent) execute(ctx context.Context, user, update int64, call ToolCall, text string, s *Session, selected int64, mutated *bool) (json.RawMessage, error) {
-	return a.executeAuthorized(ctx, user, update, call, text, s, selected, mutated, permissionsFor(text))
+	return a.executeAuthorized(ctx, user, update, call, text, s, selected, mutated, permissionsFor(expense.TMT, text))
 }
 
 func (*fakeRepo) Users(context.Context) ([]expense.User, error) { panic("unexpected users query") }

@@ -63,7 +63,7 @@ func checkBotRecovery(t *testing.T, s *postgres.Store) {
 			args := fmt.Sprintf(`{"id":"%d"}`, e.ID)
 			text := "удали последний расход"
 			if kind == "update_expense" {
-				args = fmt.Sprintf(`{"id":"%d","amount_rubles":"450","expected_amount_rubles":"350"}`, e.ID)
+				args = fmt.Sprintf(`{"id":"%d","amount_decimal":"450","expected_amount_decimal":"350"}`, e.ID)
 				text = "последнее было не 350, а 450"
 			}
 			provider := &scriptedProvider{responses: []agent.Message{toolMessage("list_expenses", `{"selection":"latest_created","limit":1}`), toolMessage(kind, args), {Role: "assistant", Content: "Готово"}}}
@@ -218,7 +218,13 @@ func checkBaselineReopen(t *testing.T, s *postgres.Store, dsn string) {
  INSERT INTO telegram_updates(update_id,user_id,state,reply) VALUES(1,101,'done','existing reply'),(2,101,'done','Найдено расходов: 2')`); err != nil {
 		t.Fatal(err)
 	}
-	upgraded, err := postgres.Open(ctx, parsed.String(), []int64{101})
+	if changed, err := postgres.Open(ctx, parsed.String(), []int64{101}, expense.TMT); !errors.Is(err, postgres.ErrCurrencyMismatch) {
+		if changed != nil {
+			changed.Close()
+		}
+		t.Fatalf("legacy RUB amounts were reinterpreted: %v", err)
+	}
+	upgraded, err := postgres.Open(ctx, parsed.String(), []int64{101}, expense.RUB)
 	if err != nil {
 		t.Fatal(err)
 	}

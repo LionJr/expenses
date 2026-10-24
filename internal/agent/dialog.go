@@ -87,9 +87,9 @@ func safeText(text string) string {
 	return strings.ReplaceAll(strings.ToValidUTF8(text, "�"), "\x00", "�")
 }
 
-func previousAmount(text string) (string, bool) {
+func previousAmount(c expense.Currency, text string) (string, bool) {
 	if match := previousAmountClause.FindStringSubmatch(text); len(match) > 1 {
-		return strings.TrimSpace(amountCurrency.ReplaceAllString(strings.TrimSpace(match[1]), "")), true
+		return c.StripSuffix(match[1]), true
 	}
 	match := oldAmount.FindStringSubmatchIndex(text)
 	if len(match) < 4 {
@@ -97,7 +97,7 @@ func previousAmount(text string) (string, bool) {
 	}
 	token := text[match[2]:match[3]]
 	// In "не 350, а 450" the last comma is punctuation, not a decimal
-	// separator. Keep all other punctuation/digits so ParseRubles rejects the
+	// separator. Keep all other punctuation/digits so ParseAmount rejects the
 	// entire malformed token rather than silently accepting a valid prefix.
 	if strings.HasSuffix(token, ",") && match[3] < len(text) {
 		r, _ := utf8.DecodeRuneInString(text[match[3]:])
@@ -115,7 +115,6 @@ const (
 
 var (
 	previousAmountClause = regexp.MustCompile(`(?i)(?:^|[^\p{L}])не\s+(.+?)(?:,\s*|\s+)а\s+`)
-	amountCurrency       = regexp.MustCompile(`(?i)\s*(?:₽|руб(?:лей|ля|ль)?\.?)$`)
 
 	// Only whole, unqualified requests authorize the latest shortcut. Arbitrary
 	// mentions of "last" (including exclusions and negation) must not grant it.
@@ -145,10 +144,10 @@ func simpleListSearch(text string) string {
 	}
 	return ""
 }
-func clarification(field string) (string, error) {
+func clarification(c expense.Currency, field string) (string, error) {
 	switch field {
 	case "amount":
-		return "Укажите сумму расхода в рублях, например «кофе 350,50».", nil
+		return "Укажите сумму расхода в " + c.Code() + ", например «кофе 350,50».", nil
 	case "date":
 		return "Уточните дату расхода или период, например «вчера» или «за эту неделю».", nil
 	case "category":
@@ -187,7 +186,7 @@ func simpleDeleteSearch(text string) string {
 func selectionReply(text string) bool {
 	return selectionWord.MatchString(strings.Trim(strings.TrimSpace(text), ".!?"))
 }
-func choicePrompt(s Session) string {
+func choicePrompt(c expense.Currency, s Session) string {
 	var b strings.Builder
 	if s.Pending != nil {
 		if s.Pending.Kind == toolDeleteExpense {
@@ -201,7 +200,7 @@ func choicePrompt(s Session) string {
 	}
 	b.WriteByte('\n')
 	for i, e := range s.Candidates {
-		fmt.Fprintf(&b, "%d. %d,%02d ₽ · %s · %s", i+1, e.Amount/100, e.Amount%100, e.SpentAt, e.Category)
+		fmt.Fprintf(&b, "%d. %s · %s · %s", i+1, c.FormatAmount(e.Amount), e.SpentAt, e.Category)
 		if comment := strings.TrimSpace(strings.ReplaceAll(truncate(e.Comment, 60), "\n", " ")); comment != "" {
 			fmt.Fprintf(&b, " · %s", comment)
 		}
